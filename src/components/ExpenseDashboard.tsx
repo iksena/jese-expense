@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Wallet, Plus, Settings, CreditCard, Trash2, TrendingUp, Users, LogOut, Calendar, ChevronLeft, ChevronRight, Filter, X, Loader2, Edit2, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { addExpense, updateExpense, deleteExpense, updateSettings, upsertBudget, addRecurringBill, deleteRecurringBill, signOut } from '@/app/actions';
-import { createClient } from '@/utils/supabase/client'; // Client-side supabase for Realtime
+import { createClient } from '@/utils/supabase/client'; 
 import { Expense, Budget, RecurringBill, HouseholdSettings, Category, Currency, Spender } from '@/types';
 
 // --- Helper Functions ---
@@ -25,12 +25,14 @@ const formatCurrency = (amount: number, currency: Currency): string => {
 
 const getMonthName = (dateString: string): string => {
   const date = new Date(dateString + '-01');
-  return date.toLocaleString('default', { month: 'long', year: 'numeric' });
+  return date.toLocaleString('en-US', { month: 'long', year: 'numeric' });
 };
 
 const formatDateFriendly = (dateString: string): string => {
-  const date = new Date(dateString);
-  return date.toLocaleDateString('default', { weekday: 'short', day: 'numeric', month: 'short' });
+  if (!dateString) return '';
+  const [year, month, day] = dateString.split('-').map(Number);
+  const date = new Date(year, month - 1, day, 12, 0, 0);
+  return date.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
 // --- Animation Variants ---
@@ -58,7 +60,6 @@ const AddExpenseModal = ({
   const [date, setDate] = useState(initialData ? initialData.date : new Date().toISOString().split('T')[0]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Math Helper: "100+200" -> 300
   const calculateTotal = useCallback((input: string): number => {
     try {
       return input.split('+').reduce((sum, val) => {
@@ -542,7 +543,7 @@ export default function ExpenseDashboard({
                 groupedExpenses.map((group) => (
                   <div key={group.date}>
                     <div className="flex justify-between items-center bg-gray-100 px-4 py-2 rounded-lg mb-2 text-sm font-semibold text-gray-600">
-                      <span>{formatDateFriendly(group.date)}</span>
+                      <span suppressHydrationWarning>{formatDateFriendly(group.date)}</span>
                       <span className="flex gap-2">
                          {group.totalIDR > 0 && <span>{formatCurrency(group.totalIDR, 'IDR')}</span>}
                          {group.totalAUD > 0 && <span>{formatCurrency(group.totalAUD, 'AUD')}</span>}
