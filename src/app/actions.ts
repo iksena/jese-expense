@@ -50,6 +50,13 @@ export async function addRecurringBill(bill: Omit<RecurringBill, 'id'>) {
   revalidatePath('/')
 }
 
+export async function updateRecurringBill(id: string, bill: Partial<RecurringBill>) {
+  const supabase = createClient()
+  const { error } = await supabase.from('recurring_bills').update(bill).eq('id', id)
+  if (error) throw new Error(error.message)
+  revalidatePath('/')
+}
+
 export async function deleteRecurringBill(id: string) {
   const supabase = createClient()
   const { error } = await supabase.from('recurring_bills').delete().eq('id', id)

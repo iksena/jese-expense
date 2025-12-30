@@ -1,6 +1,6 @@
 'use client'
 
-import { addExpense, addRecurringBill, deleteExpense, deleteRecurringBill, signOut, updateExpense, updateSettings, upsertBudget } from '@/app/actions';
+import { addExpense, addRecurringBill, deleteExpense, deleteRecurringBill, signOut, updateExpense, updateRecurringBill, updateSettings, upsertBudget } from '@/app/actions';
 import { Budget, Category, Currency, Expense, HouseholdSettings, RecurringBill, Spender } from '@/types';
 import { createClient } from '@/utils/supabase/client';
 import { User } from '@supabase/supabase-js';
@@ -182,6 +182,7 @@ const SettingsModal = ({ onClose, householdSettings, budgets, recurringBills, in
   const [billDay, setBillDay] = useState('1');
   const [billStartDate, setBillStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [billEndDate, setBillEndDate] = useState('');
+  const [editingBillId, setEditingBillId] = useState<string | null>(null);
 
   const handleSaveUsers = async () => {
     await updateSettings({ householdid: initialUser.id, user1name: user1Name, user2name: user2Name });
@@ -190,9 +191,29 @@ const SettingsModal = ({ onClose, householdSettings, budgets, recurringBills, in
     await upsertBudget({ householdid: initialUser.id, category: budgetCategory, limitidr: parseFloat(budgetIDR) || 0, limitaud: parseFloat(budgetAUD) || 0 });
     setBudgetIDR(''); setBudgetAUD('');
   };
-  const handleAddBill = async () => {
-    await addRecurringBill({ 
-      householdid: initialUser.id, 
+
+  const startEditBill = (bill: RecurringBill) => {
+    setEditingBillId(bill.id);
+    setBillName(bill.name);
+    setBillAmount(bill.amount.toString());
+    setBillCurrency(bill.currency);
+    setBillCategory(bill.category);
+    setBillDay(bill.recurrenceday.toString());
+    setBillStartDate(bill.startdate);
+    setBillEndDate(bill.enddate || '');
+  };
+
+  const cancelEditBill = () => {
+    setEditingBillId(null);
+    setBillName(''); 
+    setBillAmount('');
+    setBillDay('1');
+    setBillStartDate(new Date().toISOString().split('T')[0]);
+    setBillEndDate('');
+  };
+
+  const handleSaveBill = async () => {
+    const billData = {
       name: billName, 
       amount: parseFloat(billAmount), 
       currency: billCurrency, 
@@ -200,8 +221,19 @@ const SettingsModal = ({ onClose, householdSettings, budgets, recurringBills, in
       recurrenceday: parseInt(billDay),
       startdate: billStartDate,
       enddate: billEndDate || null
-    });
-    setBillName(''); setBillAmount(''); 
+    };
+
+    if (editingBillId) {
+      await updateRecurringBill(editingBillId, billData);
+      setEditingBillId(null);
+    } else {
+      await addRecurringBill({ 
+        householdid: initialUser.id, 
+        ...billData
+      });
+    }
+
+    cancelEditBill();
   };
 
   const getBudget = (cat: Category) => budgets.find((b: Budget) => b.category === cat);
@@ -277,7 +309,15 @@ const SettingsModal = ({ onClose, householdSettings, budgets, recurringBills, in
           {activeTab === 'bills' && (
             <motion.div key="bills" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }} className="space-y-6">
               <div className="space-y-4">
-                <h3 className="font-semibold text-gray-800">Add Recurring Bill</h3>
+                <div className="flex justify-between items-center">
+                  <h3 className="font-semibold text-gray-800">
+                    {editingBillId ? 'Edit Recurring Bill' : 'Add Recurring Bill'}
+                  </h3>
+                  {editingBillId && (
+                    <button onClick={cancelEditBill} className="text-sm text-red-500 hover:underline">Cancel</button>
+                  )}
+                </div>
+                
                 <input type="text" value={billName} onChange={(e) => setBillName(e.target.value)} placeholder="Bill Name" className="w-full px-4 py-2 border rounded-lg" />
                 <div className="grid grid-cols-2 gap-4">
                   <input type="number" value={billAmount} onChange={(e) => setBillAmount(e.target.value)} placeholder="Amount" className="w-full px-4 py-2 border rounded-lg" />
@@ -297,20 +337,32 @@ const SettingsModal = ({ onClose, householdSettings, budgets, recurringBills, in
                     <select value={billCategory} onChange={(e) => setBillCategory(e.target.value as Category)} className="w-full px-4 py-2 border rounded-lg bg-white">
                         {['Food', 'Entertainment', 'Needs', 'Transport', 'Uncategorized'].map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
-                    <input type="number" min="1" max="31" value={billDay} onChange={(e) => setBillDay(e.target.value)} className="w-full px-4 py-2 border rounded-lg" />
+                    <input type="number" min="1" max="31" value={billDay} onChange={(e) => setBillDay(e.target.value)} className="w-full px-4 py-2 border rounded-lg" placeholder="Day (1-31)" />
                 </div>
-                <button onClick={handleAddBill} className="w-full bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700 transition-colors">Add Bill</button>
+
+                <button 
+                  onClick={handleSaveBill} 
+                  disabled={!billName || !billAmount}
+                  className="w-full bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
+                >
+                  {editingBillId ? 'Update Bill' : 'Add Bill'}
+                </button>
               </div>
               <div className="mt-4 space-y-2">
                 {recurringBills.map((b: RecurringBill) => (
-                  <div key={b.id} className="p-3 bg-gray-50 flex justify-between items-center rounded-lg">
+                  <div key={b.id} className={`p-3 rounded-lg flex justify-between items-center ${editingBillId === b.id ? 'bg-purple-50 border border-purple-200' : 'bg-gray-50'}`}>
                     <div>
                         <div className="font-medium text-gray-700">{b.name}</div>
-                        <div className="text-sm text-gray-500">{b.category} • Day {b.recurrenceday}</div>
+                        <div className="text-sm text-gray-500">{b.category} • Day {b.recurrenceday} • {b.startdate} to {b.enddate || '-'}</div>
                     </div>
-                    <div className="flex items-center gap-3">
-                        <span className="font-semibold text-gray-700">{formatCurrency(b.amount, b.currency)}</span>
-                        <button onClick={() => deleteRecurringBill(b.id)} className="text-red-500 hover:text-red-700"><Trash2 className="w-4 h-4" /></button>
+                    <div className="flex items-center gap-2">
+                        <span className="font-semibold text-gray-700 mr-2">{formatCurrency(b.amount, b.currency)}</span>
+                        <button onClick={() => startEditBill(b)} className="text-blue-500 hover:text-blue-700 p-1">
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => deleteRecurringBill(b.id)} className="text-red-500 hover:text-red-700 p-1">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                     </div>
                   </div>
                 ))}
