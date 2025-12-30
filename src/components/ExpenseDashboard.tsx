@@ -7,7 +7,7 @@ import { User } from '@supabase/supabase-js';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AlertTriangle, Calendar, ChevronLeft, ChevronRight, CreditCard, Edit2, Filter, Loader2, LogOut, Plus, Settings, Trash2, TrendingUp, Users, Wallet, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 
 // --- Helper Functions ---
 const formatCurrency = (amount: number, currency: Currency): string => {
@@ -39,6 +39,11 @@ const formatDateFriendly = (dateString: string): string => {
 // --- Animation Variants ---
 const fadeIn = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } };
 const modalVariants = { hidden: { opacity: 0, scale: 0.95 }, visible: { opacity: 1, scale: 1 }, exit: { opacity: 0, scale: 0.95 } };
+const listVariants = {
+  hidden: { opacity: 0, x: -20 },
+  visible: { opacity: 1, x: 0 },
+  exit: { opacity: 0, x: 20, height: 0, marginBottom: 0 }
+};
 
 // --- Sub-Components ---
 
@@ -539,39 +544,168 @@ export default function ExpenseDashboard({
 
           {/* List */}
           <div className="space-y-4">
-            <AnimatePresence>
-              {groupedExpenses.length === 0 ? <div className="text-center py-8 text-gray-400 bg-white rounded-xl">No expenses found</div> : 
-                groupedExpenses.map((group) => (
-                  <div key={group.date}>
-                    <div className="flex justify-between items-center bg-gray-100 px-4 py-2 rounded-lg mb-2 text-sm font-semibold text-gray-600">
-                      <span suppressHydrationWarning>{formatDateFriendly(group.date)}</span>
-                      <span className="flex gap-2">
-                         {group.totalIDR > 0 && <span>{formatCurrency(group.totalIDR, 'IDR')}</span>}
-                         {group.totalAUD > 0 && <span>{formatCurrency(group.totalAUD, 'AUD')}</span>}
-                      </span>
-                    </div>
-                    {group.items.map(expense => (
-                      <motion.div layout key={expense.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-2">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <div className="font-semibold text-gray-800">{expense.description || 'No Description'}</div>
-                            <span className="px-2 py-0.5 bg-purple-100 text-purple-800 rounded-full text-xs font-medium">{expense.category}</span>
-                          </div>
-                          <div className="font-bold text-gray-800">{formatCurrency(expense.amount, expense.currency)}</div>
+            {/* Mobile View: Cards */}
+            <div className="block md:hidden space-y-4">
+               <AnimatePresence>
+                 {groupedExpenses.length === 0 ? (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-8 text-gray-400 bg-white rounded-xl shadow-sm">
+                      No expenses found
+                    </motion.div>
+                  ) : (
+                    groupedExpenses.map((group) => (
+                      <div key={group.date}>
+                        <div className="flex justify-between items-center bg-gray-100 px-4 py-2 rounded-lg mb-2 text-sm font-semibold text-gray-600">
+                          <span suppressHydrationWarning>{formatDateFriendly(group.date)}</span>
+                          <span className="flex gap-2">
+                             {group.totalIDR > 0 && <span>{formatCurrency(group.totalIDR, 'IDR')}</span>}
+                             {group.totalAUD > 0 && <span>{formatCurrency(group.totalAUD, 'AUD')}</span>}
+                          </span>
                         </div>
-                        <div className="flex justify-between items-center mt-3 pt-3 border-t border-gray-50">
-                           <span className="text-sm text-gray-600 flex items-center gap-1"><Users className="w-3 h-3" /> {expense.spender === 'User 1' ? settings.user1name : expense.spender === 'User 2' ? settings.user2name : 'Together'}</span>
-                           <div className="flex gap-2">
-                             <button onClick={() => setEditingExpense(expense)} className="text-blue-500 p-1 hover:text-blue-700"><Edit2 className="w-4 h-4" /></button>
-                             <button onClick={() => setDeletingId(expense.id)} className="text-red-500 p-1 hover:text-red-700"><Trash2 className="w-4 h-4" /></button>
-                           </div>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </div>
-                ))
-              }
-            </AnimatePresence>
+                        {group.items.map((expense) => (
+                          <motion.div 
+                            key={expense.id} 
+                            variants={listVariants}
+                            initial="hidden"
+                            animate="visible"
+                            exit="exit"
+                            layout
+                            className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-3"
+                          >
+                            <div className="flex justify-between items-start mb-2">
+                              <div>
+                                <div className="font-semibold text-gray-800">{expense.description || 'No Description'}</div>
+                                <span className="px-2 py-0.5 bg-purple-100 text-purple-800 rounded-full text-xs font-medium">
+                                  {expense.category}
+                                </span>
+                              </div>
+                              <div className="text-right">
+                                <div className="font-bold text-gray-800">{formatCurrency(expense.amount, expense.currency)}</div>
+                              </div>
+                            </div>
+                            <div className="flex justify-between items-center mt-3 pt-3 border-t border-gray-50">
+                              <div className="text-sm text-gray-600 flex items-center gap-1">
+                                <Users className="w-3 h-3" />
+                                {expense.spender === 'User 1' ? settings.user1name : 
+                                 expense.spender === 'User 2' ? settings.user2name : 
+                                 'Together'}
+                              </div>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => setEditingExpense(expense)}
+                                  className="text-blue-500 hover:text-blue-700 p-1"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => setDeletingId(expense.id)}
+                                  className="text-red-500 hover:text-red-700 p-1"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          </motion.div>
+                        ))}
+                      </div>
+                    ))
+                  )}
+               </AnimatePresence>
+            </div>
+
+            {/* Desktop View: Table */}
+            <motion.div variants={fadeIn} className="hidden md:block bg-white rounded-xl shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Spender</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    <AnimatePresence mode="popLayout">
+                    {groupedExpenses.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-12 text-center text-gray-400">
+                          No expenses found for this period
+                        </td>
+                      </tr>
+                    ) : (
+                      groupedExpenses.map((group) => (
+                        <Fragment key={group.date}>
+                           {/* Date Subheader Row */}
+                           <tr className="bg-gray-100">
+                             <td colSpan={6} className="px-6 py-2 text-sm font-bold text-gray-700">
+                               <div className="flex justify-between">
+                                  <span suppressHydrationWarning>{formatDateFriendly(group.date)}</span>
+                                  <div className="flex gap-4">
+                                     {group.totalIDR > 0 && <span className="text-gray-600">Total: {formatCurrency(group.totalIDR, 'IDR')}</span>}
+                                     {group.totalAUD > 0 && <span className="text-gray-600">Total: {formatCurrency(group.totalAUD, 'AUD')}</span>}
+                                  </div>
+                               </div>
+                             </td>
+                           </tr>
+                           {/* Expense Rows */}
+                           {group.items.map((expense) => (
+                              <motion.tr 
+                                key={expense.id}
+                                layout
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, height: 0 }}
+                                className="hover:bg-gray-50 transition-colors"
+                              >
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                                  <span suppressHydrationWarning>{new Date(expense.date).toLocaleDateString('en-US')}</span>
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-800">
+                                  {expense.description || '-'}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                  <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded-full text-xs font-medium">
+                                    {expense.category}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                                  {expense.spender === 'User 1' ? settings.user1name : 
+                                   expense.spender === 'User 2' ? settings.user2name : 
+                                   'Together'}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-right text-gray-800">
+                                  {formatCurrency(expense.amount, expense.currency)}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                                  <div className="flex justify-end gap-2">
+                                    <button
+                                      onClick={() => setEditingExpense(expense)}
+                                      className="text-blue-500 hover:text-blue-700 transition-colors"
+                                      title="Edit"
+                                    >
+                                      <Edit2 className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      onClick={() => setDeletingId(expense.id)}
+                                      className="text-red-500 hover:text-red-700 transition-colors"
+                                      title="Delete"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </motion.tr>
+                           ))}
+                        </Fragment>
+                      ))
+                    )}
+                    </AnimatePresence>
+                  </tbody>
+                </table>
+              </div>
+            </motion.div>
           </div>
         </motion.div>
       </main>
