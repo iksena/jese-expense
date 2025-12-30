@@ -8,7 +8,6 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { AlertTriangle, Calendar, ChevronLeft, ChevronRight, CreditCard, Edit2, Filter, Loader2, LogOut, Plus, Settings, Trash2, TrendingUp, Users, Wallet, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
-
 // --- Helper Functions ---
 const formatCurrency = (amount: number, currency: Currency): string => {
   if (currency === 'IDR') {
@@ -39,10 +38,13 @@ const formatDateFriendly = (dateString: string): string => {
 // --- Animation Variants ---
 const fadeIn = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } };
 const modalVariants = { hidden: { opacity: 0, scale: 0.95 }, visible: { opacity: 1, scale: 1 }, exit: { opacity: 0, scale: 0.95 } };
-const listVariants = {
-  hidden: { opacity: 0, x: -20 },
-  visible: { opacity: 1, x: 0 },
-  exit: { opacity: 0, x: 20, height: 0, marginBottom: 0 }
+const listVariants = { hidden: { opacity: 0, x: -20 }, visible: { opacity: 1, x: 0 }, exit: { opacity: 0, x: 20, height: 0, marginBottom: 0 } };
+const categoryColors = {
+  Food: 'bg-green-100 text-green-800',
+  Entertainment: 'bg-blue-100 text-blue-800',
+  Needs: 'bg-yellow-100 text-yellow-800',
+  Transport: 'bg-indigo-100 text-indigo-800',
+  Uncategorized: 'bg-gray-100 text-gray-800',
 };
 
 // --- Sub-Components ---
@@ -316,9 +318,8 @@ export default function ExpenseDashboard({
   initialSettings: HouseholdSettings;
 }) {
   const router = useRouter();
-  const supabase = createClient(); // Client-side instance for realtime
+  const supabase = createClient();
 
-  // Props are initial state, but we need state for realtime updates
   const [expenses, setExpenses] = useState(initialExpenses);
   const [budgets, setBudgets] = useState(initialBudgets);
   const [recurringBills, setRecurringBills] = useState(initialBills);
@@ -332,24 +333,21 @@ export default function ExpenseDashboard({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  // Sync props to state (when Server Actions revalidate)
   useEffect(() => { setExpenses(initialExpenses); }, [initialExpenses]);
   useEffect(() => { setBudgets(initialBudgets); }, [initialBudgets]);
   useEffect(() => { setRecurringBills(initialBills); }, [initialBills]);
   useEffect(() => { setSettings(initialSettings); }, [initialSettings]);
 
-  // Realtime Subscription
   useEffect(() => {
     const channel = supabase.channel('realtime')
       .on('postgres_changes', { event: '*', schema: 'public', filter: `householdid=eq.${initialUser.id}` }, () => {
-        router.refresh(); // Fetch fresh data from server
+        router.refresh();
       })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
   }, [supabase, router, initialUser.id]);
 
-  // Computed Values
   const filteredExpenses = useMemo(() => {
     return expenses.filter(exp => {
       const monthMatch = exp.date.startsWith(selectedMonth);
@@ -374,9 +372,11 @@ export default function ExpenseDashboard({
   }, [filteredExpenses]);
 
   const grandTotals = useMemo(() => ({
-    IDR: filteredExpenses.filter(e => e.currency === 'IDR').reduce((s, e) => s + e.amount, 0),
-    AUD: filteredExpenses.filter(e => e.currency === 'AUD').reduce((s, e) => s + e.amount, 0),
-  }), [filteredExpenses]);
+    IDR: filteredExpenses.filter(e => e.currency === 'IDR').reduce((s, e) => s + e.amount, 0) 
+      + recurringBills.filter(b => b.currency === 'IDR').reduce((s, b) => s + b.amount, 0),
+    AUD: filteredExpenses.filter(e => e.currency === 'AUD').reduce((s, e) => s + e.amount, 0) 
+      + recurringBills.filter(b => b.currency === 'AUD').reduce((s, b) => s + b.amount, 0),
+  }), [filteredExpenses, recurringBills]);
 
   const totalsBySpender = useMemo(() => {
     const totals: Record<Spender, { IDR: number; AUD: number }> = {
@@ -385,8 +385,11 @@ export default function ExpenseDashboard({
       'Together': { IDR: 0, AUD: 0 },
     };
     filteredExpenses.forEach(exp => totals[exp.spender][exp.currency] += exp.amount);
+    recurringBills.forEach(bill => {
+      totals['Together'][bill.currency] += bill.amount;
+    });
     return totals;
-  }, [filteredExpenses]);
+  }, [filteredExpenses, recurringBills]);
 
   const totalsByCategory = useMemo(() => {
     const totals: Record<Category, { IDR: number; AUD: number }> = {
@@ -397,10 +400,12 @@ export default function ExpenseDashboard({
       Uncategorized: { IDR: 0, AUD: 0 },
     };
     filteredExpenses.forEach(exp => totals[exp.category][exp.currency] += exp.amount);
+    recurringBills.forEach(bill => {
+      totals[bill.category][bill.currency] += bill.amount;
+    });
     return totals;
-  }, [filteredExpenses]);
+  }, [filteredExpenses, recurringBills]);
 
-  // Handlers
   const handleAddExpense = async (data: Omit<Expense, 'id' | 'createdat' | 'householdid'>) => { await addExpense({ ...data, householdid: initialUser.id }); };
   const handleEditExpense = async (data: Partial<Expense>) => { if (editingExpense) await updateExpense(editingExpense.id, data); };
   const handleDelete = async () => { if (deletingId) { await deleteExpense(deletingId); setDeletingId(null); }};
@@ -574,7 +579,7 @@ export default function ExpenseDashboard({
                             <div className="flex justify-between items-start mb-2">
                               <div>
                                 <div className="font-semibold text-gray-800">{expense.description || 'No Description'}</div>
-                                <span className="px-2 py-0.5 bg-purple-100 text-purple-800 rounded-full text-xs font-medium">
+                                <span className={`px-2 py-0.5 ${categoryColors[expense.category]} rounded-full text-xs font-medium`}>
                                   {expense.category}
                                 </span>
                               </div>
@@ -608,6 +613,38 @@ export default function ExpenseDashboard({
                         ))}
                       </div>
                     ))
+                  )}
+                  {/* Recurring Bills (Mobile) */}
+                  {recurringBills.length > 0 && (
+                    <div key="recurring-bills-mobile">
+                      <div className="flex justify-between items-center bg-purple-50 px-4 py-2 rounded-lg mb-2 text-sm font-bold text-purple-800 mt-6">
+                        <span>Recurring Bills</span>
+                        <span className="flex gap-2">
+                           {recurringBills.some(b => b.currency === 'IDR') && <span>Total: {formatCurrency(recurringBills.filter(b => b.currency === 'IDR').reduce((a, b) => a + b.amount, 0), 'IDR')}</span>}
+                           {recurringBills.some(b => b.currency === 'AUD') && <span>Total: {formatCurrency(recurringBills.filter(b => b.currency === 'AUD').reduce((a, b) => a + b.amount, 0), 'AUD')}</span>}
+                        </span>
+                      </div>
+                      {recurringBills.map(bill => (
+                        <motion.div 
+                          key={bill.id}
+                          layout
+                          className="bg-white p-4 rounded-xl shadow-sm border border-purple-100 mb-2"
+                        >
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <div className="font-semibold text-gray-800">{bill.name}</div>
+                              <span className={`px-2 py-0.5 ${categoryColors[bill.category]} rounded-full text-xs font-medium`}>{bill.category}</span>
+                            </div>
+                            <div className="font-bold text-gray-800">{formatCurrency(bill.amount, bill.currency)}</div>
+                          </div>
+                          <div className="flex justify-between items-center mt-3 pt-3 border-t border-gray-50">
+                             <span className="text-sm text-gray-600 flex items-center gap-1">
+                               <Calendar className="w-3 h-3" /> Day {bill.recurrenceday}
+                             </span>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
                   )}
                </AnimatePresence>
             </div>
@@ -666,7 +703,7 @@ export default function ExpenseDashboard({
                                   {expense.description || '-'}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                  <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded-full text-xs font-medium">
+                                  <span className={`px-2 py-1 ${categoryColors[expense.category]} rounded-full text-xs font-medium`}>
                                     {expense.category}
                                   </span>
                                 </td>
@@ -700,6 +737,53 @@ export default function ExpenseDashboard({
                            ))}
                         </Fragment>
                       ))
+                    )}
+                    
+                    {/* Recurring Bills Section (Desktop) */}
+                    {recurringBills.length > 0 && (
+                      <Fragment key="recurring-bills-section">
+                        <tr className="bg-purple-50">
+                          <td colSpan={6} className="px-6 py-2 text-sm font-bold text-purple-800">
+                            <div className="flex justify-between">
+                              <span>Recurring Bills</span>
+                              <div className="flex gap-4">
+                                 {recurringBills.some(b => b.currency === 'IDR') && <span>Total: {formatCurrency(recurringBills.filter(b => b.currency === 'IDR').reduce((a, b) => a + b.amount, 0), 'IDR')}</span>}
+                                 {recurringBills.some(b => b.currency === 'AUD') && <span>Total: {formatCurrency(recurringBills.filter(b => b.currency === 'AUD').reduce((a, b) => a + b.amount, 0), 'AUD')}</span>}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                        {recurringBills.map((bill) => (
+                          <motion.tr 
+                            key={bill.id}
+                            layout
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="hover:bg-purple-50/50 transition-colors"
+                          >
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                              Day {bill.recurrenceday}
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-800">
+                              {bill.name}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm">
+                              <span className={`px-2 py-1 ${categoryColors[bill.category]} rounded-full text-xs font-medium`}>
+                                {bill.category}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                              -
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-right text-gray-800">
+                              {formatCurrency(bill.amount, bill.currency)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                              {/* No actions for recurring bills in main list */}
+                            </td>
+                          </motion.tr>
+                        ))}
+                      </Fragment>
                     )}
                     </AnimatePresence>
                   </tbody>
