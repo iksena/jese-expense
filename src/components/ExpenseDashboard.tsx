@@ -1,12 +1,13 @@
 'use client'
 
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { addExpense, addRecurringBill, deleteExpense, deleteRecurringBill, signOut, updateExpense, updateSettings, upsertBudget } from '@/app/actions';
+import { Budget, Category, Currency, Expense, HouseholdSettings, RecurringBill, Spender } from '@/types';
+import { createClient } from '@/utils/supabase/client';
+import { User } from '@supabase/supabase-js';
+import { AnimatePresence, motion } from 'framer-motion';
+import { AlertTriangle, Calendar, ChevronLeft, ChevronRight, CreditCard, Edit2, Filter, Loader2, LogOut, Plus, Settings, Trash2, TrendingUp, Users, Wallet, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { Wallet, Plus, Settings, CreditCard, Trash2, TrendingUp, Users, LogOut, Calendar, ChevronLeft, ChevronRight, Filter, X, Loader2, Edit2, AlertTriangle } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { addExpense, updateExpense, deleteExpense, updateSettings, upsertBudget, addRecurringBill, deleteRecurringBill, signOut } from '@/app/actions';
-import { createClient } from '@/utils/supabase/client'; 
-import { Expense, Budget, RecurringBill, HouseholdSettings, Category, Currency, Spender } from '@/types';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 // --- Helper Functions ---
 const formatCurrency = (amount: number, currency: Currency): string => {
@@ -159,7 +160,7 @@ const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message }: { isOpen: 
   );
 };
 
-const SettingsModal = ({ onClose, householdSettings, budgets, recurringBills, initialUser }: { onClose: () => void; householdSettings: HouseholdSettings; budgets: Budget[]; recurringBills: RecurringBill[]; initialUser: { id: string; email: string; }; }) => {
+const SettingsModal = ({ onClose, householdSettings, budgets, recurringBills, initialUser }: { onClose: () => void; householdSettings: HouseholdSettings; budgets: Budget[]; recurringBills: RecurringBill[]; initialUser: User; }) => {
   const [activeTab, setActiveTab] = useState<'users' | 'budgets' | 'bills'>('users');
   const [user1Name, setUser1Name] = useState(householdSettings.user1name);
   const [user2Name, setUser2Name] = useState(householdSettings.user2name);
@@ -303,7 +304,7 @@ export default function ExpenseDashboard({
   initialBills,
   initialSettings 
 }: {
-  initialUser: { id: string; email: string; };
+  initialUser: User;
   initialExpenses: Expense[];
   initialBudgets: Budget[];
   initialBills: RecurringBill[];
@@ -395,7 +396,7 @@ export default function ExpenseDashboard({
   }, [filteredExpenses]);
 
   // Handlers
-  const handleAddExpense = async (data: Omit<Expense, 'id' | 'createdat'>) => { await addExpense({ ...data, householdid: initialUser.id }); };
+  const handleAddExpense = async (data: Omit<Expense, 'id' | 'createdat' | 'householdid'>) => { await addExpense({ ...data, householdid: initialUser.id }); };
   const handleEditExpense = async (data: Partial<Expense>) => { if (editingExpense) await updateExpense(editingExpense.id, data); };
   const handleDelete = async () => { if (deletingId) { await deleteExpense(deletingId); setDeletingId(null); }};
   const handleLogout = async () => { setIsLoggingOut(true); await signOut(); };
