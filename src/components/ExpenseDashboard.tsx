@@ -180,6 +180,8 @@ const SettingsModal = ({ onClose, householdSettings, budgets, recurringBills, in
   const [billCurrency, setBillCurrency] = useState<Currency>('IDR');
   const [billCategory, setBillCategory] = useState<Category>('Needs');
   const [billDay, setBillDay] = useState('1');
+  const [billStartDate, setBillStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [billEndDate, setBillEndDate] = useState('');
 
   const handleSaveUsers = async () => {
     await updateSettings({ householdid: initialUser.id, user1name: user1Name, user2name: user2Name });
@@ -189,8 +191,17 @@ const SettingsModal = ({ onClose, householdSettings, budgets, recurringBills, in
     setBudgetIDR(''); setBudgetAUD('');
   };
   const handleAddBill = async () => {
-    await addRecurringBill({ householdid: initialUser.id, name: billName, amount: parseFloat(billAmount), currency: billCurrency, category: billCategory, recurrenceday: parseInt(billDay) });
-    setBillName(''); setBillAmount('');
+    await addRecurringBill({ 
+      householdid: initialUser.id, 
+      name: billName, 
+      amount: parseFloat(billAmount), 
+      currency: billCurrency, 
+      category: billCategory, 
+      recurrenceday: parseInt(billDay),
+      startdate: billStartDate,
+      enddate: billEndDate || null
+    });
+    setBillName(''); setBillAmount(''); 
   };
 
   const getBudget = (cat: Category) => budgets.find((b: Budget) => b.category === cat);
@@ -271,6 +282,16 @@ const SettingsModal = ({ onClose, householdSettings, budgets, recurringBills, in
                 <div className="grid grid-cols-2 gap-4">
                   <input type="number" value={billAmount} onChange={(e) => setBillAmount(e.target.value)} placeholder="Amount" className="w-full px-4 py-2 border rounded-lg" />
                   <select value={billCurrency} onChange={(e) => setBillCurrency(e.target.value as Currency)} className="w-full px-4 py-2 border rounded-lg bg-white"><option value="IDR">IDR</option><option value="AUD">AUD</option></select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs text-gray-500 block mb-1">Start Date</label>
+                      <input type="date" value={billStartDate} onChange={(e) => setBillStartDate(e.target.value)} className="w-full px-4 py-2 border rounded-lg" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 block mb-1">End Date (Optional)</label>
+                      <input type="date" value={billEndDate} onChange={(e) => setBillEndDate(e.target.value)} className="w-full px-4 py-2 border rounded-lg" />
+                    </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                     <select value={billCategory} onChange={(e) => setBillCategory(e.target.value as Category)} className="w-full px-4 py-2 border rounded-lg bg-white">
@@ -356,6 +377,22 @@ export default function ExpenseDashboard({
     });
   }, [expenses, selectedMonth, filterCategory]);
 
+  const filteredBills = useMemo(() => {
+    const monthStart = new Date(selectedMonth + '-01');
+    const monthEnd = new Date(new Date(monthStart).setMonth(monthStart.getMonth() + 1));
+    monthEnd.setDate(0); 
+
+    return recurringBills.filter(bill => {
+      const billStart = new Date(bill.startdate);
+      const billEnd = bill.enddate ? new Date(bill.enddate) : null;
+
+      const isStarted = billStart <= monthEnd;
+      const isNotEnded = billEnd ? billEnd >= monthStart : true;
+
+      return isStarted && isNotEnded;
+    });
+  }, [recurringBills, selectedMonth]);
+
   const groupedExpenses = useMemo(() => {
     const groups: Record<string, Expense[]> = {};
     filteredExpenses.forEach(exp => {
@@ -373,10 +410,10 @@ export default function ExpenseDashboard({
 
   const grandTotals = useMemo(() => ({
     IDR: filteredExpenses.filter(e => e.currency === 'IDR').reduce((s, e) => s + e.amount, 0) 
-      + recurringBills.filter(b => b.currency === 'IDR').reduce((s, b) => s + b.amount, 0),
+      + filteredBills.filter(b => b.currency === 'IDR').reduce((s, b) => s + b.amount, 0),
     AUD: filteredExpenses.filter(e => e.currency === 'AUD').reduce((s, e) => s + e.amount, 0) 
-      + recurringBills.filter(b => b.currency === 'AUD').reduce((s, b) => s + b.amount, 0),
-  }), [filteredExpenses, recurringBills]);
+      + filteredBills.filter(b => b.currency === 'AUD').reduce((s, b) => s + b.amount, 0),
+  }), [filteredExpenses, filteredBills]);
 
   const totalsBySpender = useMemo(() => {
     const totals: Record<Spender, { IDR: number; AUD: number }> = {
@@ -385,11 +422,11 @@ export default function ExpenseDashboard({
       'Together': { IDR: 0, AUD: 0 },
     };
     filteredExpenses.forEach(exp => totals[exp.spender][exp.currency] += exp.amount);
-    recurringBills.forEach(bill => {
+    filteredBills.forEach(bill => {
       totals['Together'][bill.currency] += bill.amount;
     });
     return totals;
-  }, [filteredExpenses, recurringBills]);
+  }, [filteredExpenses, filteredBills]);
 
   const totalsByCategory = useMemo(() => {
     const totals: Record<Category, { IDR: number; AUD: number }> = {
@@ -400,11 +437,11 @@ export default function ExpenseDashboard({
       Uncategorized: { IDR: 0, AUD: 0 },
     };
     filteredExpenses.forEach(exp => totals[exp.category][exp.currency] += exp.amount);
-    recurringBills.forEach(bill => {
+    filteredBills.forEach(bill => {
       totals[bill.category][bill.currency] += bill.amount;
     });
     return totals;
-  }, [filteredExpenses, recurringBills]);
+  }, [filteredExpenses, filteredBills]);
 
   const handleAddExpense = async (data: Omit<Expense, 'id' | 'createdat' | 'householdid'>) => { await addExpense({ ...data, householdid: initialUser.id }); };
   const handleEditExpense = async (data: Partial<Expense>) => { if (editingExpense) await updateExpense(editingExpense.id, data); };
@@ -435,6 +472,16 @@ export default function ExpenseDashboard({
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+        <div className="fixed bottom-4 right-4 z-40">
+          <button
+            aria-label="Add Expense"
+            title="Add Expense"
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center justify-center w-14 h-14 bg-purple-600 text-white rounded-full shadow-lg hover:scale-105 transform transition-all focus:outline-none focus:ring-2 focus:ring-purple-300"
+          >
+            <Plus className="w-6 h-6" />
+          </button>
+        </div>
         <motion.div variants={fadeIn} initial="hidden" animate="visible">
           {/* Month Selector */}
           <div className="bg-white rounded-xl shadow-sm p-4 mb-6 flex justify-between items-center">
@@ -542,9 +589,6 @@ export default function ExpenseDashboard({
                 {['Food', 'Entertainment', 'Needs', 'Transport', 'Uncategorized'].map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
-            <button onClick={() => setShowAddModal(true)} className="flex items-center justify-center gap-2 px-6 py-3 bg-purple-600 text-white rounded-lg font-medium shadow-sm hover:bg-purple-700 transition-colors">
-              <Plus className="w-5 h-5" /> Add Expense
-            </button>
           </div>
 
           {/* List */}
@@ -615,16 +659,16 @@ export default function ExpenseDashboard({
                     ))
                   )}
                   {/* Recurring Bills (Mobile) */}
-                  {recurringBills.length > 0 && (
+                  {filteredBills.length > 0 && (
                     <div key="recurring-bills-mobile">
                       <div className="flex justify-between items-center bg-purple-50 px-4 py-2 rounded-lg mb-2 text-sm font-bold text-purple-800 mt-6">
                         <span>Recurring Bills</span>
                         <span className="flex gap-2">
-                           {recurringBills.some(b => b.currency === 'IDR') && <span>Total: {formatCurrency(recurringBills.filter(b => b.currency === 'IDR').reduce((a, b) => a + b.amount, 0), 'IDR')}</span>}
-                           {recurringBills.some(b => b.currency === 'AUD') && <span>Total: {formatCurrency(recurringBills.filter(b => b.currency === 'AUD').reduce((a, b) => a + b.amount, 0), 'AUD')}</span>}
+                           {filteredBills.some(b => b.currency === 'IDR') && <span>Total: {formatCurrency(filteredBills.filter(b => b.currency === 'IDR').reduce((a, b) => a + b.amount, 0), 'IDR')}</span>}
+                           {filteredBills.some(b => b.currency === 'AUD') && <span>Total: {formatCurrency(filteredBills.filter(b => b.currency === 'AUD').reduce((a, b) => a + b.amount, 0), 'AUD')}</span>}
                         </span>
                       </div>
-                      {recurringBills.map(bill => (
+                      {filteredBills.map(bill => (
                         <motion.div 
                           key={bill.id}
                           layout
@@ -740,20 +784,20 @@ export default function ExpenseDashboard({
                     )}
                     
                     {/* Recurring Bills Section (Desktop) */}
-                    {recurringBills.length > 0 && (
+                    {filteredBills.length > 0 && (
                       <Fragment key="recurring-bills-section">
                         <tr className="bg-purple-50">
                           <td colSpan={6} className="px-6 py-2 text-sm font-bold text-purple-800">
                             <div className="flex justify-between">
                               <span>Recurring Bills</span>
                               <div className="flex gap-4">
-                                 {recurringBills.some(b => b.currency === 'IDR') && <span>Total: {formatCurrency(recurringBills.filter(b => b.currency === 'IDR').reduce((a, b) => a + b.amount, 0), 'IDR')}</span>}
-                                 {recurringBills.some(b => b.currency === 'AUD') && <span>Total: {formatCurrency(recurringBills.filter(b => b.currency === 'AUD').reduce((a, b) => a + b.amount, 0), 'AUD')}</span>}
+                                 {filteredBills.some(b => b.currency === 'IDR') && <span>Total: {formatCurrency(filteredBills.filter(b => b.currency === 'IDR').reduce((a, b) => a + b.amount, 0), 'IDR')}</span>}
+                                 {filteredBills.some(b => b.currency === 'AUD') && <span>Total: {formatCurrency(filteredBills.filter(b => b.currency === 'AUD').reduce((a, b) => a + b.amount, 0), 'AUD')}</span>}
                               </div>
                             </div>
                           </td>
                         </tr>
-                        {recurringBills.map((bill) => (
+                        {filteredBills.map((bill) => (
                           <motion.tr 
                             key={bill.id}
                             layout
@@ -799,7 +843,7 @@ export default function ExpenseDashboard({
         {showAddModal && <AddExpenseModal onClose={() => setShowAddModal(false)} onSubmit={handleAddExpense} householdSettings={settings} />}
         {editingExpense && <AddExpenseModal onClose={() => setEditingExpense(null)} onSubmit={handleEditExpense} householdSettings={settings} initialData={editingExpense} />}
         {deletingId && <ConfirmModal isOpen={!!deletingId} onClose={() => setDeletingId(null)} onConfirm={handleDelete} title="Delete Expense" message="Are you sure? This cannot be undone." />}
-        {showSettings && <SettingsModal onClose={() => setShowSettings(false)} householdSettings={settings} budgets={budgets} recurringBills={recurringBills} initialUser={initialUser} />}
+        {showSettings && <SettingsModal onClose={() => setShowSettings(false)} householdSettings={settings} budgets={budgets} recurringBills={filteredBills} initialUser={initialUser} />}
       </AnimatePresence>
     </div>
   );

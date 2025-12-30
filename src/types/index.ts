@@ -22,6 +22,9 @@ export interface RecurringBill {
   category: Category;
   recurrenceday: number;
   householdid: string;
+  startdate: string;
+  enddate: string | null;
+  spender: Spender | null;
 }
 
 export interface Budget {
