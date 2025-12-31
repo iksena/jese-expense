@@ -33,6 +33,7 @@ export interface Budget {
   limitidr: number;
   limitaud: number;
   householdid: string;
+  month: string;
 }
 
 export interface HouseholdSettings {

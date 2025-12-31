@@ -155,7 +155,7 @@ const AddExpenseModal = ({
 const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message }: { isOpen: boolean; onClose: () => void; onConfirm: () => void; title: string; message: string; }) => {
   if (!isOpen) return null;
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 flex items-center justify-center p-4 z-[60] bg-black/50">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 flex items-center justify-center p-4 z-60 bg-black/50">
       <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6">
         <div className="flex items-center gap-3 text-red-600 mb-4"><AlertTriangle /><h3 className="text-lg font-bold">{title}</h3></div>
         <p className="text-gray-600 mb-6">{message}</p>
@@ -168,7 +168,7 @@ const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message }: { isOpen: 
   );
 };
 
-const SettingsModal = ({ onClose, householdSettings, budgets, recurringBills, initialUser }: { onClose: () => void; householdSettings: HouseholdSettings; budgets: Budget[]; recurringBills: RecurringBill[]; initialUser: User; }) => {
+const SettingsModal = ({ onClose, householdSettings, budgets, recurringBills, initialUser, selectedMonth }: { onClose: () => void; householdSettings: HouseholdSettings; budgets: Budget[]; recurringBills: RecurringBill[]; initialUser: User; selectedMonth: string; }) => {
   const [activeTab, setActiveTab] = useState<'users' | 'budgets' | 'bills'>('users');
   const [user1Name, setUser1Name] = useState(householdSettings.user1name);
   const [user2Name, setUser2Name] = useState(householdSettings.user2name);
@@ -189,7 +189,13 @@ const SettingsModal = ({ onClose, householdSettings, budgets, recurringBills, in
     await updateSettings({ householdid: initialUser.id, user1name: user1Name, user2name: user2Name });
   };
   const handleSaveBudget = async () => {
-    await upsertBudget({ householdid: initialUser.id, category: budgetCategory, limitidr: parseFloat(budgetIDR) || 0, limitaud: parseFloat(budgetAUD) || 0 });
+    await upsertBudget({ 
+      householdid: initialUser.id, 
+      category: budgetCategory, 
+      limitidr: parseFloat(budgetIDR) || 0, 
+      limitaud: parseFloat(budgetAUD) || 0,
+      month: selectedMonth
+    });
     setBudgetIDR(''); setBudgetAUD('');
   };
 
@@ -237,7 +243,9 @@ const SettingsModal = ({ onClose, householdSettings, budgets, recurringBills, in
     cancelEditBill();
   };
 
-  const getBudget = (cat: Category) => budgets.find((b: Budget) => b.category === cat);
+  const getBudget = (cat: Category) => budgets.find((b: Budget) => 
+    b.category === cat && b.month === selectedMonth
+  );
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 flex items-center justify-center p-4 z-50 bg-black/50">
@@ -540,7 +548,7 @@ export default function ExpenseDashboard({
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50">
+    <div className="min-h-screen bg-linear-to-br from-purple-50 to-blue-50">
       <header className="bg-white shadow-sm sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8 flex justify-between items-center">
           <div className="flex items-center gap-3"><Wallet className="text-purple-600" /><h1 className="text-xl font-bold">Expense Tracker</h1></div>
@@ -634,7 +642,7 @@ export default function ExpenseDashboard({
             <h3 className="text-lg font-semibold text-gray-800 mb-4">Category Breakdown</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {(['Food', 'Entertainment', 'Needs', 'Transport'] as Category[]).map((cat) => {
-                const budget = budgets.find(b => b.category === cat);
+                const budget = budgets.find(b => b.category === cat && b.month === selectedMonth);
                 const spent = totalsByCategory[cat];
                 const percentIDR = budget && budget.limitidr > 0 ? (spent.IDR / budget.limitidr) * 100 : 0;
                 const percentAUD = budget && budget.limitaud > 0 ? (spent.AUD / budget.limitaud) * 100 : 0;
@@ -941,7 +949,7 @@ export default function ExpenseDashboard({
         {showAddModal && <AddExpenseModal onClose={() => setShowAddModal(false)} onSubmit={handleAddExpense} householdSettings={settings} />}
         {editingExpense && <AddExpenseModal onClose={() => setEditingExpense(null)} onSubmit={handleEditExpense} householdSettings={settings} initialData={editingExpense} />}
         {deletingId && <ConfirmModal isOpen={!!deletingId} onClose={() => setDeletingId(null)} onConfirm={handleDelete} title="Delete Expense" message="Are you sure? This cannot be undone." />}
-        {showSettings && <SettingsModal onClose={() => setShowSettings(false)} householdSettings={settings} budgets={budgets} recurringBills={filteredBills} initialUser={initialUser} />}
+        {showSettings && <SettingsModal onClose={() => setShowSettings(false)} householdSettings={settings} budgets={budgets} recurringBills={filteredBills} initialUser={initialUser} selectedMonth={selectedMonth} />}
       </AnimatePresence>
     </div>
   );

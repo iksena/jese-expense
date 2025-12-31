@@ -38,7 +38,9 @@ export async function updateSettings(settings: HouseholdSettings) {
 
 export async function upsertBudget(budget: Omit<Budget, 'id'>) {
   const supabase = createClient()
-  const { error } = await supabase.from('budgets').upsert(budget, { onConflict: 'householdid, category' })
+  const { error } = await supabase.from('budgets').upsert(budget, { 
+    onConflict: 'householdid, category, month' 
+  })
   if (error) throw new Error(error.message)
   revalidatePath('/')
 }
