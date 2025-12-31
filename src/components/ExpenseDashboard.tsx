@@ -5,9 +5,10 @@ import { Budget, Category, Currency, Expense, HouseholdSettings, RecurringBill, 
 import { createClient } from '@/utils/supabase/client';
 import { User } from '@supabase/supabase-js';
 import { AnimatePresence, motion } from 'framer-motion';
-import { AlertTriangle, Calendar, ChevronLeft, ChevronRight, CreditCard, Edit2, Filter, Loader2, LogOut, Plus, Settings, Trash2, TrendingUp, Users, Wallet, X } from 'lucide-react';
+import { AlertTriangle, Calendar, ChevronLeft, ChevronRight, CreditCard, Edit2, Filter, Loader2, LogOut, Plus, RefreshCw, Settings, Trash2, TrendingUp, Users, Wallet, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+
 // --- Helper Functions ---
 const formatCurrency = (amount: number, currency: Currency): string => {
   if (currency === 'IDR') {
@@ -39,7 +40,7 @@ const formatDateFriendly = (dateString: string): string => {
 const fadeIn = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } };
 const modalVariants = { hidden: { opacity: 0, scale: 0.95 }, visible: { opacity: 1, scale: 1 }, exit: { opacity: 0, scale: 0.95 } };
 const listVariants = { hidden: { opacity: 0, x: -20 }, visible: { opacity: 1, x: 0 }, exit: { opacity: 0, x: 20, height: 0, marginBottom: 0 } };
-const categoryColors = {
+const categoryColors: Record<string, string> = {
   Food: 'bg-green-100 text-green-800',
   Entertainment: 'bg-blue-100 text-blue-800',
   Needs: 'bg-yellow-100 text-yellow-800',
@@ -405,6 +406,24 @@ export default function ExpenseDashboard({
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [baseCurrency, setBaseCurrency] = useState<Currency>('IDR');
+  const [exchangeRate, setExchangeRate] = useState<number | null>(null);
+
+  // Fetch Exchange Rate (AUD base, get IDR rate)
+  useEffect(() => {
+    const fetchRate = async () => {
+      try {
+        const res = await fetch('https://api.frankfurter.dev/v1/latest?base=AUD&symbols=IDR');
+        const data = await res.json();
+        if (data && data.rates && data.rates.IDR) {
+          setExchangeRate(data.rates.IDR);
+        }
+      } catch (error) {
+        console.error("Failed to fetch exchange rate", error);
+      }
+    };
+    fetchRate();
+  }, []);
 
   useEffect(() => { setExpenses(initialExpenses); }, [initialExpenses]);
   useEffect(() => { setBudgets(initialBudgets); }, [initialBudgets]);
@@ -460,12 +479,21 @@ export default function ExpenseDashboard({
       });
   }, [filteredExpenses]);
 
-  const grandTotals = useMemo(() => ({
+  const rawTotals = useMemo(() => ({
     IDR: filteredExpenses.filter(e => e.currency === 'IDR').reduce((s, e) => s + e.amount, 0) 
       + filteredBills.filter(b => b.currency === 'IDR').reduce((s, b) => s + b.amount, 0),
     AUD: filteredExpenses.filter(e => e.currency === 'AUD').reduce((s, e) => s + e.amount, 0) 
       + filteredBills.filter(b => b.currency === 'AUD').reduce((s, b) => s + b.amount, 0),
   }), [filteredExpenses, filteredBills]);
+
+  const mergedTotal = useMemo(() => {
+    if (!exchangeRate) return 0;
+    if (baseCurrency === 'IDR') {
+      return rawTotals.IDR + (rawTotals.AUD * exchangeRate);
+    } else {
+      return rawTotals.AUD + (rawTotals.IDR / exchangeRate);
+    }
+  }, [rawTotals, baseCurrency, exchangeRate]);
 
   const totalsBySpender = useMemo(() => {
     const totals: Record<Spender, { IDR: number; AUD: number }> = {
@@ -544,14 +572,32 @@ export default function ExpenseDashboard({
 
           {/* Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-            <div className="bg-white rounded-xl shadow-sm p-6">
-               <div className="flex items-center gap-3 mb-4">
-                 <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center"><TrendingUp className="text-blue-600 w-5 h-5" /></div>
+            <div className="bg-white rounded-xl shadow-sm p-6 relative overflow-hidden">
+               <div className="flex justify-between items-start mb-2">
+                 <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center"><TrendingUp className="text-blue-600 w-4 h-4" /></div>
                  <h3 className="font-semibold text-gray-800">Total Spent</h3>
                </div>
-               <div className="space-y-1">
-                 <p className="text-2xl font-bold text-gray-800">{formatCurrency(grandTotals.IDR, 'IDR')}</p>
-                 <p className="text-lg font-semibold text-gray-600">{formatCurrency(grandTotals.AUD, 'AUD')}</p>
+                 <select
+                    value={baseCurrency}
+                    onChange={(e) => setBaseCurrency(e.target.value as Currency)}
+                    className="text-xs border rounded p-1 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="IDR">in IDR</option>
+                    <option value="AUD">in AUD</option>
+                  </select>
+               </div>
+               <div className="space-y-1 mt-3">
+                 {exchangeRate ? (
+                   <>
+                    <p className="text-3xl font-bold text-gray-800">{formatCurrency(mergedTotal, baseCurrency)}</p>
+                    <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                      <RefreshCw className="w-3 h-3" /> 1 AUD ≈ {formatCurrency(exchangeRate, 'IDR')}
+                    </p>
+                   </>
+                 ) : (
+                   <div className="animate-pulse h-10 bg-gray-200 rounded w-2/3"></div>
+                 )}
                </div>
             </div>
             <div className="bg-white rounded-xl shadow-sm p-6">
