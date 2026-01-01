@@ -439,8 +439,29 @@ export default function ExpenseDashboard({
   useEffect(() => { setSettings(initialSettings); }, [initialSettings]);
 
   useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+    }
+  }, []);
+
+  useEffect(() => {
     const channel = supabase.channel('realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', filter: `householdid=eq.${initialUser.id}` }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', filter: `householdid=eq.${initialUser.id}` }, (payload) => {
+        if (payload.eventType === 'INSERT' && payload.table === 'expenses') {
+          const newExp = payload.new as Expense;
+          
+          // Send Notification
+          if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+            const formattedAmount = formatCurrency(newExp.amount, newExp.currency);
+            new Notification('New Expense Added', {
+              body: `${newExp.category} - ${formattedAmount}\n${newExp.description || ''}`,
+              icon: '/favicon.ico',
+              tag: 'expense-added'
+            });
+          }
+        }
         router.refresh();
       })
       .subscribe();
@@ -525,11 +546,8 @@ export default function ExpenseDashboard({
       Uncategorized: { IDR: 0, AUD: 0 },
     };
     filteredExpenses.forEach(exp => totals[exp.category][exp.currency] += exp.amount);
-    filteredBills.forEach(bill => {
-      totals[bill.category][bill.currency] += bill.amount;
-    });
     return totals;
-  }, [filteredExpenses, filteredBills]);
+  }, [filteredExpenses]);
 
   const handleAddExpense = async (data: Omit<Expense, 'id' | 'createdat' | 'householdid'>) => { await addExpense({ ...data, householdid: initialUser.id }); };
   const handleEditExpense = async (data: Partial<Expense>) => { if (editingExpense) await updateExpense(editingExpense.id, data); };
@@ -641,7 +659,7 @@ export default function ExpenseDashboard({
           <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
             <h3 className="text-lg font-semibold text-gray-800 mb-4">Category Breakdown</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {(['Food', 'Entertainment', 'Needs', 'Transport'] as Category[]).map((cat) => {
+              {(['Food', 'Entertainment', 'Needs', 'Transport', 'Uncategorized'] as Category[]).map((cat) => {
                 const budget = budgets.find(b => b.category === cat && b.month === selectedMonth);
                 const spent = totalsByCategory[cat];
                 const percentIDR = budget && budget.limitidr > 0 ? (spent.IDR / budget.limitidr) * 100 : 0;
@@ -683,6 +701,24 @@ export default function ExpenseDashboard({
                   </div>
                 );
               })}
+              {/* Bills Breakdown */}
+              <div key={'bills'} className="p-4 bg-gray-50 rounded-lg">
+                <h4 className="font-semibold text-gray-800 mb-2">Bills</h4>
+                <div className="space-y-2">
+                  <div>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="text-gray-600">IDR</span>
+                      <span className="font-medium">{formatCurrency(filteredBills.filter(({ currency }) => currency === 'IDR').reduce((acc, bill) => acc + bill.amount, 0), 'IDR')}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="text-gray-600">AUD</span>
+                      <span className="font-medium">{formatCurrency(filteredBills.filter(({ currency }) => currency === 'AUD').reduce((acc, bill) => acc + bill.amount, 0), 'AUD')}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
