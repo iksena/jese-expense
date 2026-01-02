@@ -5,7 +5,7 @@ import { Budget, Category, Currency, Expense, HouseholdSettings, RecurringBill, 
 import { createClient } from '@/utils/supabase/client';
 import { User } from '@supabase/supabase-js';
 import { AnimatePresence, motion } from 'framer-motion';
-import { AlertTriangle, Calendar, ChevronLeft, ChevronRight, CreditCard, Edit2, Filter, Loader2, LogOut, Plus, RefreshCw, Settings, Trash2, TrendingUp, Users, Wallet, X } from 'lucide-react';
+import { AlertTriangle, Calendar, ChevronLeft, ChevronRight, CreditCard, Dumbbell, Edit2, Filter, Loader2, LogOut, Plus, RefreshCw, Settings, Trash2, TrendingUp, Users, Wallet, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -571,6 +571,9 @@ export default function ExpenseDashboard({
         <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8 flex justify-between items-center">
           <div className="flex items-center gap-3"><Wallet className="text-purple-600" /><h1 className="text-xl font-bold">Expense Tracker</h1></div>
           <div className="flex gap-2">
+            <button onClick={() => router.push('/gym')} className="p-2 text-gray-600 hover:text-purple-600 rounded-lg hover:bg-purple-50 transition-colors" title="Gym Tracker">
+              <Dumbbell className="w-5 h-5" />
+            </button>
             <button onClick={() => setShowSettings(true)} className="p-2 text-gray-600 hover:text-purple-600 rounded-lg hover:bg-purple-50 transition-colors"><Settings /></button>
             <button onClick={handleLogout} className="p-2 text-gray-600 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors">{isLoggingOut ? <Loader2 className="animate-spin"/> : <LogOut />}</button>
           </div>

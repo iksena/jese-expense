@@ -1,6 +1,6 @@
 'use server'
 
-import { Budget, Expense, HouseholdSettings, RecurringBill } from '@/types'
+import { Budget, Expense, GymExercise, HouseholdSettings, RecurringBill } from '@/types'
 import { createClient } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
@@ -71,4 +71,73 @@ export async function signOut() {
   await supabase.auth.signOut()
   revalidatePath('/')
   redirect('/login')
+}
+
+export async function saveGymSession(session: { name: string, exercises: GymExercise[], householdid: string }) {
+  const supabase = createClient()
+  
+  // 1. Create Session
+  const { data: sessionData, error: sessionError } = await supabase
+    .from('gym_sessions')
+    .insert({ household_id: session.householdid, name: session.name })
+    .select()
+    .single()
+
+  if (sessionError) throw new Error(sessionError.message)
+
+  // 2. Insert Exercises and Sets sequentially to ensure ID availability
+  for (let i = 0; i < session.exercises.length; i++) {
+    const ex = session.exercises[i]
+    const { data: exData, error: exError } = await supabase
+      .from('gym_exercises')
+      .insert({ session_id: sessionData.id, name: ex.name, order_index: i })
+      .select()
+      .single()
+    
+    if (exError) throw new Error(exError.message)
+
+    const setsToInsert = ex.sets.map((s, idx) => ({
+      exercise_id: exData.id,
+      weight: parseFloat(s.weight.toString()) || 0,
+      reps: parseInt(s.reps.toString()) || 0,
+      completed: true, // Saving history implies completion usually, or save specific state
+      order_index: idx
+    }))
+
+    if (setsToInsert.length > 0) {
+      const { error: setsError } = await supabase.from('gym_sets').insert(setsToInsert)
+      if (setsError) throw new Error(setsError.message)
+    }
+  }
+
+  revalidatePath('/gym')
+}
+
+export async function deleteGymSession(id: string) {
+  const supabase = createClient()
+  const { error } = await supabase.from('gym_sessions').delete().eq('id', id)
+  if (error) throw new Error(error.message)
+  revalidatePath('/gym')
+}
+
+export async function updateRestTimer(householdid: string, seconds: number) {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('household_settings')
+    .update({ default_rest_timer: seconds })
+    .eq('householdid', householdid)
+  
+  if (error) throw new Error(error.message)
+  revalidatePath('/gym')
+}
+
+export async function setTimer(householdid: string, expiresAt: string | null) {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('household_settings')
+    .update({ timer_expires_at: expiresAt })
+    .eq('householdid', householdid)
+  
+  if (error) throw new Error(error.message)
+  revalidatePath('/gym')
 }
