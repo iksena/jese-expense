@@ -1,7 +1,7 @@
 import { createClient } from '@/utils/supabase/server'
 import GymTracker from '@/components/GymTracker'
 import { redirect } from 'next/navigation'
-import { GymExercise, GymSession } from '@/types'
+import { GymExercise, GymSession, GymSessionRaw } from '@/types'
 
 export default async function GymPage() {
   const supabase = createClient()
@@ -42,13 +42,13 @@ export default async function GymPage() {
 
   // Transform data to match GymSession interface if needed, or rely on type assertion
   // Sorting arrays by order_index manually to be safe
-  const sessions = rawSessions?.map((s: GymSession) => ({
+  const sessions = rawSessions?.map((s: GymSessionRaw) => ({
     ...s,
     exercises: s.gym_exercises
-      .sort((a: GymExercise, b: GymExercise) => a.order_index - b.order_index)
-      .map((e: GymExercise) => ({
+      .sort((a, b) => a.order_index - b.order_index)
+      .map((e) => ({
         ...e,
-        sets: e.gym_sets.sort((a: GymSet, b: GymSet) => a.order_index - b.order_index)
+        sets: e.gym_sets.sort((a, b) => a.order_index - b.order_index)
       }))
   })) || []
 

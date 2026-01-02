@@ -40,8 +40,8 @@ export interface HouseholdSettings {
   householdid: string;
   user1name: string;
   user2name: string;
-  default_rest_timer: number;
-  timer_expires_at: string | null;
+  default_rest_timer?: number;
+  timer_expires_at?: string | null;
 }
 
 export interface GymSet {
@@ -62,4 +62,22 @@ export interface GymSession {
   name: string;
   created_at: string;
   exercises: GymExercise[];
+}
+
+export interface GymSessionRaw {
+  id: string;
+  name: string;
+  created_at: string;
+  gym_exercises: {
+    id: string;
+    name: string;
+    order_index: number;
+    gym_sets: {
+      id: string;
+      weight: string | number;
+      reps: string | number;
+      completed: boolean;
+      order_index: number;
+    }[];
+  }[];
 }

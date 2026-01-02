@@ -9,7 +9,7 @@ import { Dispatch, SetStateAction, useEffect, useState } from 'react';
 // --- Audio Helper ---
 const playBeep = () => {
   try {
-    const AudioContext = window.AudioContext || (window as Window).webkitAudioContext;
+    const AudioContext = (window.AudioContext ?? (window as {webkitAudioContext?: typeof window.AudioContext}).webkitAudioContext) as (typeof window.AudioContext | undefined);
     if (!AudioContext) return;
     const ctx = new AudioContext();
     const osc = ctx.createOscillator();
@@ -77,7 +77,6 @@ const ActiveSessionView = ({
   isSaving,
   timer,
   setTimerState,
-  restTimeSetting,
   history,
   onStartTimer
 }: ActiveSessionViewProps) => {
@@ -313,7 +312,7 @@ const HistoryView = ({ history, onStartSession, onDeleteSession, onOpenSettings,
       <header className="fixed top-0 left-0 right-0 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 z-20 px-4 py-4 flex justify-between items-center shadow-lg">
         <div className="flex items-center gap-2">
           <div className="bg-blue-600 p-2 rounded-lg"><Dumbbell className="w-5 h-5 text-white" /></div>
-          <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">IronTrack</h1>
+          <h1 className="text-xl font-bold bg-linear-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">IronTrack</h1>
         </div>
         <div className="flex gap-2">
             <button onClick={onExit} className="p-2 text-slate-400 hover:text-white" title="Back to Expenses"><LogOut className="w-5 h-5" /></button>
