@@ -6,24 +6,63 @@ import { ArrowLeft, Check, Dumbbell, History, Loader2, LogOut, Pause, Play, Plus
 import { useRouter } from 'next/navigation';
 import { Dispatch, SetStateAction, useEffect, useState } from 'react';
 
-// --- Audio Helper ---
+// --- Safe Audio Helper ---
 const playBeep = () => {
+  if (typeof window === 'undefined') return;
+  
   try {
     const AudioContext = (window.AudioContext ?? (window as {webkitAudioContext?: typeof window.AudioContext}).webkitAudioContext) as (typeof window.AudioContext | undefined);
     if (!AudioContext) return;
+
     const ctx = new AudioContext();
+    
+    // iOS requires state check
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {}); // Attempt to resume, ignore failure
+    }
+
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
+    
     osc.connect(gain);
     gain.connect(ctx.destination);
+    
     osc.type = 'sine';
     osc.frequency.setValueAtTime(880, ctx.currentTime);
     osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.5);
+    
     gain.gain.setValueAtTime(0.5, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+    
     osc.start();
     osc.stop(ctx.currentTime + 0.5);
-  } catch (e) { console.error(e); }
+  } catch (e) {
+    // Suppress audio errors on mobile browsers
+    console.warn("Audio playback prevented:", e);
+  }
+};
+
+// --- Safe Notification Helper ---
+const sendNotification = (title: string) => {
+  if (typeof window === 'undefined' || !("Notification" in window)) return;
+  
+  try {
+    if (Notification.permission === 'granted') {
+      // Wrap in try-catch because ServiceWorker requirement on iOS can cause throws
+      try {
+        new Notification(title);
+      } catch (e) {
+        // Fallback for when 'new Notification' throws (common on iOS PWA/Web)
+        if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+          navigator.serviceWorker.ready.then(registration => {
+            registration.showNotification(title);
+          }).catch(() => {});
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("Notification failed:", e);
+  }
 };
 
 // --- Format Helper ---
@@ -228,6 +267,7 @@ const ActiveSessionView = ({
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 p-6 rounded-2xl w-full max-w-xs border border-slate-700">
             <h3 className="text-lg font-bold mb-4 text-white">New Exercise</h3>
+            
             <input 
               autoFocus 
               type="text" 
@@ -236,18 +276,24 @@ const ActiveSessionView = ({
               onChange={(e) => setNewExerciseName(e.target.value)} 
               className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 mb-4 text-white focus:border-blue-500 focus:outline-none" 
             />
+
             {recentExercises.length > 0 && (
               <div className="mb-4">
                 <p className="text-xs text-slate-500 uppercase font-bold mb-2">Recent</p>
                 <div className="flex flex-wrap gap-2">
                   {recentExercises.map(name => (
-                    <button key={name} onClick={() => setNewExerciseName(name)} className="text-xs bg-slate-800 text-slate-300 px-2 py-1 rounded hover:bg-slate-700 border border-slate-700">
+                    <button
+                      key={name}
+                      onClick={() => setNewExerciseName(name)}
+                      className="text-xs bg-slate-800 text-slate-300 px-2 py-1 rounded hover:bg-slate-700 border border-slate-700"
+                    >
                       {name}
                     </button>
                   ))}
                 </div>
               </div>
             )}
+
             <div className="flex gap-2">
               <button onClick={() => setShowAddExercise(false)} className="flex-1 py-3 bg-slate-800 rounded-lg text-white">Cancel</button>
               <button onClick={() => handleAddExercise(newExerciseName)} className="flex-1 py-3 bg-blue-600 rounded-lg text-white">Add</button>
@@ -345,7 +391,7 @@ const HistoryView = ({ history, onStartSession, onDeleteSession, onOpenSettings,
                         </button>
                     </div>
                     <div className="space-y-1 mb-4">
-                        {session.exercises.slice(0, 3).map(ex => (
+                        {session.exercises.slice(0, 5).map(ex => (
                             <div key={ex.id} className="text-sm text-slate-400 flex justify-between">
                                 <span>{ex.sets.length} x {ex.name}</span>
                                 <span className="text-slate-600">{Math.max(...ex.sets.map(s => Number(s.weight)))}kg</span>
@@ -375,13 +421,19 @@ export default function GymTracker({ initialHistory, householdSettings, userId }
   const [showSettings, setShowSettings] = useState(false);
 
   // --- Active Session State ---
-  // Load from localStorage if available, else defaults
   const [sessionName, setSessionName] = useState('');
   const [exercises, setExercises] = useState<GymExercise[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
   // --- Timer State ---
   const [timer, setTimer] = useState<TimerState>({ active: false, timeLeft: 0, duration: restTimeSetting, isOpen: false });
+
+  // --- Audio/Notification Effects ---
+  useEffect(() => {
+    if (typeof window !== 'undefined' && "Notification" in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
 
   // Load active session from local storage on mount
   useEffect(() => {
@@ -393,18 +445,14 @@ export default function GymTracker({ initialHistory, householdSettings, userId }
           setTimeout(() => {
             setSessionName(name || '');
             setExercises(savedEx);
+            if (savedView === 'active') setView('active');
           }, 0);
-          if (savedView === 'active') {
-            setTimeout(() => {
-              setView('active');
-            }, 0);
-          }
         }
       } catch (e) { console.error("Failed to load session", e); }
     }
   }, []);
 
-  // Save active session to local storage whenever it changes
+  // Save active session to local storage
   useEffect(() => {
     if (exercises.length > 0) {
       localStorage.setItem('gym-active-session', JSON.stringify({ name: sessionName, exercises, view }));
@@ -412,13 +460,6 @@ export default function GymTracker({ initialHistory, householdSettings, userId }
       localStorage.removeItem('gym-active-session');
     }
   }, [exercises, sessionName, view]);
-
-  // Request Notification Permission
-  useEffect(() => {
-    if (typeof window !== 'undefined' && "Notification" in window && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
-  }, []);
 
   // Sync Timer with Server State (Robust Timer Logic)
   useEffect(() => {
@@ -434,10 +475,10 @@ export default function GymTracker({ initialHistory, householdSettings, userId }
             ...prev,
             active: true,
             timeLeft: diff,
-            duration: restTimeSetting, // Assume duration is restTime setting for progress bar calculation
+            duration: restTimeSetting, // Assume duration is restTime setting
             isOpen: true // Re-open if it was running
           }));
-        }, 0);
+        }, 0); //
       } else {
         // Timer expired while away
         setTimeout(() => {
@@ -457,7 +498,7 @@ export default function GymTracker({ initialHistory, householdSettings, userId }
           if (newTime <= 0) {
              // Timer Finished
              playBeep();
-             if (typeof window !== 'undefined' && Notification.permission === 'granted') new Notification("Rest Complete!");
+             sendNotification("Rest Complete!");
              // Clear server timer
              setServerTimer(userId, null); 
              return { ...p, timeLeft: 0, active: false };
@@ -502,7 +543,7 @@ export default function GymTracker({ initialHistory, householdSettings, userId }
     setIsSaving(true);
     await saveGymSession({ name: sessionName, exercises, householdid: userId });
     setIsSaving(false);
-    localStorage.removeItem('gym-active-session'); // Clear local storage
+    localStorage.removeItem('gym-active-session');
     setExercises([]);
     setView('history');
   };
