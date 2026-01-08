@@ -73,7 +73,7 @@ const formatTime = (seconds: number) => {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
-// --- Types for Props ---
+// --- Types ---
 interface TimerState {
   active: boolean;
   timeLeft: number;
@@ -144,7 +144,7 @@ const ActiveSessionView = ({
 
   return (
     <div className="pb-24">
-      {/* Active Header */}
+      {/* Header */}
       <header className="fixed top-0 left-0 right-0 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 z-20 px-4 py-4 flex justify-between items-center shadow-lg">
         <div className="flex items-center gap-3">
           <button onClick={onDiscard} className="p-1 hover:bg-slate-800 rounded">
@@ -428,10 +428,22 @@ export default function GymTracker({ initialHistory, householdSettings, userId }
   // --- Timer State ---
   const [timer, setTimer] = useState<TimerState>({ active: false, timeLeft: 0, duration: restTimeSetting, isOpen: false });
 
-  // --- Audio/Notification Effects ---
+  // 1. Service Worker Registration
   useEffect(() => {
-    if (typeof window !== 'undefined' && "Notification" in window && Notification.permission === 'default') {
-      Notification.requestPermission();
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js')
+        .then(reg => console.log('Service Worker Registered'))
+        .catch(err => console.error('Service Worker Failed', err));
+      
+      // Listen for messages FROM the Service Worker
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data && event.data.type === 'TIMER_DONE') {
+          // Sync local state when SW says timer is done
+          setTimer(prev => ({ ...prev, active: false, timeLeft: 0 }));
+          // Optional: Play beep here as backup if foreground
+          playBeep(); 
+        }
+      });
     }
   }, []);
 
@@ -452,7 +464,6 @@ export default function GymTracker({ initialHistory, householdSettings, userId }
     }
   }, []);
 
-  // Save active session to local storage
   useEffect(() => {
     if (exercises.length > 0) {
       localStorage.setItem('gym-active-session', JSON.stringify({ name: sessionName, exercises, view }));
@@ -508,7 +519,7 @@ export default function GymTracker({ initialHistory, householdSettings, userId }
       }, 1000);
     }
     return () => { if (interval) clearInterval(interval); };
-  }, [timer.active, timer.timeLeft, userId]);
+  }, [timer.active]);
 
   // --- Handlers ---
 
@@ -517,7 +528,7 @@ export default function GymTracker({ initialHistory, householdSettings, userId }
       setSessionName(template.name || 'Workout');
       setExercises(template.exercises.map(e => ({
         ...e,
-        id: Date.now().toString() + Math.random(), // New Temp IDs
+        id: Date.now().toString() + Math.random(),
         sets: e.sets.map(s => ({ ...s, completed: false, id: Math.random().toString() }))
       })));
     } else {
@@ -534,8 +545,16 @@ export default function GymTracker({ initialHistory, householdSettings, userId }
     // 1. Optimistic UI update
     setTimer({ active: true, timeLeft: duration, duration: duration, isOpen: true });
     
-    // 2. Sync with Server
+    // 2. Sync with Server (Database)
     await setServerTimer(userId, expiresAt);
+
+    // 3. Sync with Service Worker (Background Notification)
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: 'START_TIMER',
+        delay: duration * 1000 // Convert seconds to ms
+      });
+    }
   };
 
   const handleSaveSession = async () => {
