@@ -2,42 +2,32 @@
 
 import { deleteGymSession, saveGymSession, setTimer as setServerTimer, updateRestTimer } from '@/app/actions';
 import { GymExercise, GymSession, HouseholdSettings } from '@/types';
-import { ArrowLeft, Check, Dumbbell, History, Loader2, LogOut, Pause, Play, Plus, RotateCcw, Save, Settings, Timer, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Check, Dumbbell, Edit2, History, Loader2, LogOut, Pause, Play, Plus, RotateCcw, Save, Settings, Timer, Trash2, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Dispatch, SetStateAction, useEffect, useState } from 'react';
 
 // --- Safe Audio Helper ---
 const playBeep = () => {
   if (typeof window === 'undefined') return;
-  
   try {
     const AudioContext = (window.AudioContext ?? (window as {webkitAudioContext?: typeof window.AudioContext}).webkitAudioContext) as (typeof window.AudioContext | undefined);
     if (!AudioContext) return;
-
     const ctx = new AudioContext();
-    
-    // iOS requires state check
     if (ctx.state === 'suspended') {
-      ctx.resume().catch(() => {}); // Attempt to resume, ignore failure
+      ctx.resume().catch(() => {});
     }
-
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    
     osc.connect(gain);
     gain.connect(ctx.destination);
-    
     osc.type = 'sine';
     osc.frequency.setValueAtTime(880, ctx.currentTime);
     osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.5);
-    
     gain.gain.setValueAtTime(0.5, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
-    
     osc.start();
     osc.stop(ctx.currentTime + 0.5);
   } catch (e) {
-    // Suppress audio errors on mobile browsers
     console.warn("Audio playback prevented:", e);
   }
 };
@@ -45,14 +35,11 @@ const playBeep = () => {
 // --- Safe Notification Helper ---
 const sendNotification = (title: string) => {
   if (typeof window === 'undefined' || !("Notification" in window)) return;
-  
   try {
     if (Notification.permission === 'granted') {
-      // Wrap in try-catch because ServiceWorker requirement on iOS can cause throws
       try {
         new Notification(title);
       } catch (e) {
-        // Fallback for when 'new Notification' throws (common on iOS PWA/Web)
         if (navigator.serviceWorker && navigator.serviceWorker.ready) {
           navigator.serviceWorker.ready.then(registration => {
             registration.showNotification(title);
@@ -105,7 +92,6 @@ interface HistoryViewProps {
 }
 
 // --- Sub-Components ---
-
 const ActiveSessionView = ({
   sessionName,
   setSessionName,
@@ -121,6 +107,8 @@ const ActiveSessionView = ({
 }: ActiveSessionViewProps) => {
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [newExerciseName, setNewExerciseName] = useState('');
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editingExerciseId, setEditingExerciseId] = useState<string | null>(null);
 
   const calculateProgress = () => {
     if (timer.duration === 0) return 0;
@@ -133,153 +121,197 @@ const ActiveSessionView = ({
 
   const handleAddExercise = (name: string) => {
     if (!name.trim()) return;
-    setExercises(prev => [...prev, { 
-      id: Math.random().toString(), 
-      name: name, 
-      sets: [{ id: Math.random().toString(), weight: '', reps: '', completed: false }] 
+    setExercises(prev => [...prev, {
+      id: Math.random().toString(),
+      name: name,
+      sets: [{ id: Math.random().toString(), weight: '', reps: '', completed: false }]
     }]);
     setNewExerciseName('');
     setShowAddExercise(false);
   };
 
   return (
-    <div className="pb-24">
-      {/* Header */}
-      <header className="fixed top-0 left-0 right-0 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 z-20 px-4 py-4 flex justify-between items-center shadow-lg">
-        <div className="flex items-center gap-3">
-          <button onClick={onDiscard} className="p-1 hover:bg-slate-800 rounded">
-            <ArrowLeft className="text-slate-400" />
+    <div className="max-w-2xl mx-auto p-4 pb-20">
+      {/* Active Header with Editable Title */}
+      <div className="flex items-center justify-between mb-6 gap-3">
+        <button onClick={onDiscard} className="text-slate-500 hover:text-slate-300">
+          <ArrowLeft size={24} />
+        </button>
+        
+        <div className="flex-1 flex items-center gap-2">
+          {isEditingTitle ? (
+            <input
+              type="text"
+              value={sessionName}
+              onChange={(e) => setSessionName(e.target.value)}
+              onBlur={() => setIsEditingTitle(false)}
+              onKeyDown={(e) => e.key === 'Enter' && setIsEditingTitle(false)}
+              autoFocus
+              className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-lg font-bold focus:border-blue-500 focus:outline-none"
+            />
+          ) : (
+            <h1 className="text-xl font-bold text-white flex-1">{sessionName || 'New Workout'}</h1>
+          )}
+          <button 
+            onClick={() => setIsEditingTitle(!isEditingTitle)}
+            className="text-slate-500 hover:text-slate-300 p-2"
+          >
+            <Edit2 size={18} />
           </button>
-          <input 
-            value={sessionName} 
-            onChange={(e) => setSessionName(e.target.value)}
-            className="bg-transparent text-xl font-bold text-slate-100 focus:outline-none w-48"
-            placeholder="Workout Name"
-          />
         </div>
+
         <button 
           onClick={onSave} 
-          disabled={isSaving} 
-          className="text-sm bg-emerald-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-emerald-500 disabled:opacity-50 flex items-center gap-2"
+          disabled={isSaving || exercises.length === 0}
+          className="bg-emerald-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
         >
-          {isSaving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : <><Save className="w-4 h-4" /> Save</>}
+          {isSaving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+          Save
         </button>
-      </header>
+      </div>
 
       {/* Exercises List */}
-      <div className="pt-20 px-4 max-w-md mx-auto space-y-6">
+      <div className="space-y-4">
         {exercises.length === 0 && (
-          <div className="text-center py-20 opacity-50">
-            <Dumbbell className="w-16 h-16 mx-auto mb-4 text-slate-700" />
-            <p>No exercises. Add one!</p>
-          </div>
+          <div className="text-center text-slate-500 py-12">No exercises. Add one!</div>
         )}
 
         {exercises.map((exercise, exIdx) => (
-          <div key={exercise.id || exIdx} className="bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 shadow-xl">
-            <div className="px-4 py-3 bg-slate-800/50 flex justify-between items-center border-b border-slate-800">
-              <h3 className="font-semibold text-lg text-blue-100">{exercise.name}</h3>
+          <div key={exercise.id} className="bg-slate-900 rounded-xl overflow-hidden border border-slate-800">
+            <div className="flex items-center justify-between p-4 bg-slate-800/50">
+              <div className="flex-1 flex items-center gap-2">
+                {editingExerciseId === exercise.id ? (
+                  <input
+                    type="text"
+                    value={exercise.name}
+                    onChange={(e) => {
+                      const newEx = [...exercises];
+                      newEx[exIdx].name = e.target.value;
+                      setExercises(newEx);
+                    }}
+                    onBlur={() => setEditingExerciseId(null)}
+                    onKeyDown={(e) => e.key === 'Enter' && setEditingExerciseId(null)}
+                    autoFocus
+                    className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-white font-bold focus:border-blue-500 focus:outline-none"
+                  />
+                ) : (
+                  <h3 className="font-bold text-white flex-1">{exercise.name}</h3>
+                )}
+                <button 
+                  onClick={() => setEditingExerciseId(exercise.id)}
+                  className="text-slate-500 hover:text-slate-300 p-1"
+                >
+                  <Edit2 size={16} />
+                </button>
+              </div>
               <button 
-                onClick={() => setExercises(prev => prev.filter(e => e !== exercise))} 
+                onClick={() => setExercises(prev => prev.filter(e => e !== exercise))}
                 className="text-slate-500 hover:text-red-400 p-1"
               >
-                <Trash2 className="w-4 h-4" />
+                <Trash2 size={18} />
               </button>
             </div>
 
-            <div className="grid grid-cols-10 gap-2 px-4 py-2 text-xs font-medium text-slate-500 uppercase text-center">
-              <div className="col-span-1">#</div>
-              <div className="col-span-3">kg</div>
-              <div className="col-span-3">Reps</div>
-              <div className="col-span-3">Done</div>
-            </div>
+            <div className="p-4">
+              <div className="grid grid-cols-[40px_1fr_1fr_60px_auto] gap-2 mb-2 text-xs text-slate-500 font-medium">
+                <div>#</div>
+                <div>kg</div>
+                <div>Reps</div>
+                <div>Done</div>
+                <div></div>
+              </div>
 
-            <div className="px-2 pb-2 space-y-1">
               {exercise.sets.map((set, sIdx) => (
-                <div key={set.id || sIdx} className={`grid grid-cols-10 gap-2 items-center p-2 rounded-lg transition-all ${set.completed ? 'bg-emerald-900/20' : 'bg-slate-800/30'}`}>
-                  <div className="col-span-1 text-center font-mono text-slate-400 text-sm">{sIdx + 1}</div>
-                  <div className="col-span-3">
-                    <input type="number" placeholder="0" value={set.weight} 
-                      onChange={(e) => {
-                        const newEx = [...exercises];
-                        newEx[exIdx].sets[sIdx].weight = e.target.value;
-                        setExercises(newEx);
-                      }}
-                      className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-center text-sm focus:border-blue-500 focus:outline-none text-white"
-                    />
-                  </div>
-                  <div className="col-span-3">
-                    <input type="number" placeholder="0" value={set.reps} 
-                      onChange={(e) => {
-                        const newEx = [...exercises];
-                        newEx[exIdx].sets[sIdx].reps = e.target.value;
-                        setExercises(newEx);
-                      }}
-                      className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-center text-sm focus:border-blue-500 focus:outline-none text-white"
-                    />
-                  </div>
-                  <div className="col-span-3 flex justify-center gap-1">
-                    <button 
-                      onClick={() => {
-                        const wasCompleted = set.completed;
-                        const newEx = [...exercises];
-                        newEx[exIdx].sets[sIdx].completed = !wasCompleted;
-                        setExercises(newEx);
-                        
-                        // Start timer ONLY if marking AS DONE (Grey -> Green)
-                        if (!wasCompleted) {
-                          onStartTimer();
-                        }
-                      }}
-                      className={`flex-1 flex justify-center items-center h-9 rounded ${set.completed ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-400'}`}
-                    >
-                      <Check className="w-4 h-4" />
+                <div key={set.id} className="grid grid-cols-[40px_1fr_1fr_60px_auto] gap-2 mb-2 items-center">
+                  <div className="text-slate-500 text-sm text-center">{sIdx + 1}</div>
+                  
+                  <input
+                    type="number"
+                    placeholder="0"
+                    value={set.weight}
+                    onChange={(e) => {
+                      const newEx = [...exercises];
+                      newEx[exIdx].sets[sIdx].weight = e.target.value;
+                      setExercises(newEx);
+                    }}
+                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-center text-sm focus:border-blue-500 focus:outline-none text-white"
+                  />
+                  
+                  <input
+                    type="number"
+                    placeholder="0"
+                    value={set.reps}
+                    onChange={(e) => {
+                      const newEx = [...exercises];
+                      newEx[exIdx].sets[sIdx].reps = e.target.value;
+                      setExercises(newEx);
+                    }}
+                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-center text-sm focus:border-blue-500 focus:outline-none text-white"
+                  />
+                  
+                  <button
+                    onClick={() => {
+                      const wasCompleted = set.completed;
+                      const newEx = [...exercises];
+                      newEx[exIdx].sets[sIdx].completed = !wasCompleted;
+                      setExercises(newEx);
+                      
+                      // Start/Restart timer ONLY if marking AS DONE (Grey -> Green)
+                      if (!wasCompleted) {
+                        onStartTimer();
+                      }
+                    }}
+                    className={`flex-1 flex justify-center items-center h-9 rounded ${set.completed ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-400'}`}
+                  >
+                    <Check size={18} />
+                  </button>
+
+                  {!set.completed && (
+                    <button onClick={() => {
+                      const newEx = [...exercises];
+                      newEx[exIdx].sets = newEx[exIdx].sets.filter((_, i) => i !== sIdx);
+                      setExercises(newEx);
+                    }} className="px-2 text-slate-600 hover:text-red-400">
+                      <X size={16} />
                     </button>
-                    {!set.completed && (
-                       <button onClick={() => {
-                         const newEx = [...exercises];
-                         newEx[exIdx].sets = newEx[exIdx].sets.filter((_, i) => i !== sIdx);
-                         setExercises(newEx);
-                       }} className="px-2 text-slate-600 hover:text-red-400"><X className="w-3 h-3" /></button>
-                    )}
-                  </div>
+                  )}
                 </div>
               ))}
+
+              <button onClick={() => {
+                const newEx = [...exercises];
+                const lastSet = newEx[exIdx].sets[newEx[exIdx].sets.length - 1];
+                newEx[exIdx].sets.push({ id: Math.random().toString(), weight: lastSet ? lastSet.weight : '', reps: lastSet ? lastSet.reps : '', completed: false });
+                setExercises(newEx);
+              }} className="w-full py-3 text-sm text-blue-400 hover:bg-blue-900/10 border-t border-slate-800 font-medium flex items-center justify-center gap-2">
+                <Plus size={16} />
+                Add Set
+              </button>
             </div>
-            <button onClick={() => {
-               const newEx = [...exercises];
-               const lastSet = newEx[exIdx].sets[newEx[exIdx].sets.length - 1];
-               newEx[exIdx].sets.push({ id: Math.random().toString(), weight: lastSet ? lastSet.weight : '', reps: lastSet ? lastSet.reps : '', completed: false });
-               setExercises(newEx);
-            }} className="w-full py-3 text-sm text-blue-400 hover:bg-blue-900/10 border-t border-slate-800 font-medium flex items-center justify-center gap-2">
-              <Plus className="w-4 h-4" /> Add Set
-            </button>
           </div>
         ))}
 
         <button onClick={() => setShowAddExercise(true)} className="w-full py-4 rounded-xl border-2 border-dashed border-slate-800 text-slate-500 hover:border-slate-700 hover:text-slate-400 transition-colors flex flex-col items-center gap-2">
-          <Plus className="w-6 h-6" /> <span className="font-medium">Add Exercise</span>
+          <Plus size={24} />
+          Add Exercise
         </button>
       </div>
 
-      {/* Add Ex Modal */}
+      {/* Add Exercise Modal */}
       {showAddExercise && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 p-6 rounded-2xl w-full max-w-xs border border-slate-700">
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-end justify-center p-4">
+          <div className="bg-slate-900 rounded-t-3xl w-full max-w-md p-6 animate-slide-up">
             <h3 className="text-lg font-bold mb-4 text-white">New Exercise</h3>
-            
-            <input 
-              autoFocus 
-              type="text" 
-              placeholder="E.g. Squat" 
-              value={newExerciseName} 
-              onChange={(e) => setNewExerciseName(e.target.value)} 
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 mb-4 text-white focus:border-blue-500 focus:outline-none" 
+            <input
+              type="text"
+              placeholder="Exercise name"
+              value={newExerciseName}
+              onChange={(e) => setNewExerciseName(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 mb-4 text-white focus:border-blue-500 focus:outline-none"
             />
-
             {recentExercises.length > 0 && (
               <div className="mb-4">
-                <p className="text-xs text-slate-500 uppercase font-bold mb-2">Recent</p>
+                <p className="text-xs text-slate-500 mb-2">Recent</p>
                 <div className="flex flex-wrap gap-2">
                   {recentExercises.map(name => (
                     <button
@@ -293,8 +325,7 @@ const ActiveSessionView = ({
                 </div>
               </div>
             )}
-
-            <div className="flex gap-2">
+            <div className="flex gap-3">
               <button onClick={() => setShowAddExercise(false)} className="flex-1 py-3 bg-slate-800 rounded-lg text-white">Cancel</button>
               <button onClick={() => handleAddExercise(newExerciseName)} className="flex-1 py-3 bg-blue-600 rounded-lg text-white">Add</button>
             </div>
@@ -304,36 +335,41 @@ const ActiveSessionView = ({
 
       {/* Timer Overlay */}
       {timer.isOpen && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 bg-slate-900 border-t border-slate-800 p-4 pb-8 safe-area-bottom shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
-          <div className="max-w-md mx-auto">
-            <div className="flex justify-between items-center mb-4">
-               <span className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2"><Timer className="w-3 h-3" /> Rest Timer</span>
-               <button onClick={() => setTimerState(t => ({...t, isOpen: false}))} className="text-slate-500"><X className="w-4 h-4" /></button>
+        <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 rounded-3xl p-8 w-full max-w-sm text-center">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-white">Rest Timer</h3>
+              <button onClick={() => setTimerState(t => ({...t, isOpen: false}))} className="text-slate-500">
+                <X size={24} />
+              </button>
             </div>
-            <div className="flex items-center justify-between gap-6">
-              <div>
-                  <div className="text-5xl font-mono font-bold text-white">
-                      {formatTime(timer.timeLeft)}
-                  </div>
-                  <div className="text-xs text-slate-500 mt-1">Target: {formatTime(timer.duration)}</div>
-              </div>
-              <div className="flex items-center gap-3">
-                  <button onClick={() => setTimerState(p => ({ ...p, timeLeft: Math.max(0, p.timeLeft - 10) }))} className="p-3 rounded-full bg-slate-800 text-slate-300">-10s</button>
-                  <button onClick={() => setTimerState(p => ({ ...p, active: !p.active }))} className={`p-4 rounded-full ${timer.active ? 'bg-amber-500/10 text-amber-500' : 'bg-emerald-500 text-white'}`}>
-                      {timer.active ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6 ml-1" />}
-                  </button>
-                  <button onClick={() => setTimerState(p => ({ ...p, timeLeft: p.timeLeft + 30 }))} className="p-3 rounded-full bg-slate-800 text-slate-300">+30s</button>
-              </div>
-            </div>
-            <div className="h-1 bg-slate-800 w-full mt-6 rounded-full overflow-hidden">
-                <div 
-                    className={`h-full transition-all duration-1000 ease-linear ${timer.active ? 'bg-emerald-500' : 'bg-slate-500'}`}
-                    style={{ width: `${calculateProgress()}%` }}
+
+            <div className="relative w-48 h-48 mx-auto mb-6">
+              <svg className="transform -rotate-90 w-48 h-48">
+                <circle cx="96" cy="96" r="88" stroke="currentColor" strokeWidth="8" fill="none" className="text-slate-800" />
+                <circle cx="96" cy="96" r="88" stroke="currentColor" strokeWidth="8" fill="none" className="text-emerald-500"
+                  strokeDasharray={`${2 * Math.PI * 88}`}
+                  strokeDashoffset={`${2 * Math.PI * 88 * (1 - calculateProgress() / 100)}`}
+                  style={{ transition: 'stroke-dashoffset 1s linear' }}
                 />
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <div className="text-5xl font-mono font-bold text-white">{formatTime(timer.timeLeft)}</div>
+                <div className="text-sm text-slate-500 mt-1">Target: {formatTime(timer.duration)}</div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-center gap-4">
+              <button onClick={() => setTimerState(p => ({ ...p, timeLeft: Math.max(0, p.timeLeft - 10) }))} className="p-3 rounded-full bg-slate-800 text-slate-300">-10s</button>
+              <button onClick={() => setTimerState(p => ({ ...p, active: !p.active }))} className={`p-4 rounded-full ${timer.active ? 'bg-amber-500/10 text-amber-500' : 'bg-emerald-500 text-white'}`}>
+                {timer.active ? <Pause size={24} /> : <Play size={24} />}
+              </button>
+              <button onClick={() => setTimerState(p => ({ ...p, timeLeft: p.timeLeft + 30 }))} className="p-3 rounded-full bg-slate-800 text-slate-300">+30s</button>
             </div>
           </div>
         </div>
       )}
+
       {!timer.isOpen && timer.active && (
         <button onClick={() => setTimerState(t => ({...t, isOpen: true}))} className="fixed bottom-6 right-6 bg-emerald-600 text-white p-4 rounded-full shadow-lg z-30 font-mono font-bold">
           {formatTime(timer.timeLeft)}
@@ -354,56 +390,79 @@ const HistoryView = ({ history, onStartSession, onDeleteSession, onOpenSettings,
   };
 
   return (
-    <div className="pb-24 pt-20 px-4 max-w-md mx-auto space-y-6">
-      <header className="fixed top-0 left-0 right-0 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 z-20 px-4 py-4 flex justify-between items-center shadow-lg">
-        <div className="flex items-center gap-2">
-          <div className="bg-blue-600 p-2 rounded-lg"><Dumbbell className="w-5 h-5 text-white" /></div>
-          <h1 className="text-xl font-bold bg-linear-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">IronTrack</h1>
-        </div>
+    <div className="max-w-2xl mx-auto p-4">
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          <Dumbbell size={28} />
+          Gym Tracker
+        </h1>
         <div className="flex gap-2">
-            <button onClick={onExit} className="p-2 text-slate-400 hover:text-white" title="Back to Expenses"><LogOut className="w-5 h-5" /></button>
-            <button onClick={onOpenSettings} className="p-2 text-slate-400 hover:text-white"><Settings className="w-5 h-5" /></button>
+          <button onClick={onOpenSettings} className="p-2 text-slate-400 hover:text-white">
+            <Settings size={22} />
+          </button>
+          <button onClick={onExit} className="p-2 text-slate-400 hover:text-white">
+            <LogOut size={22} />
+          </button>
         </div>
-      </header>
+      </div>
 
       <button onClick={() => onStartSession()} className="w-full py-4 bg-emerald-600 rounded-xl text-white font-bold text-lg shadow-lg shadow-emerald-900/20 hover:bg-emerald-500 transition-all active:scale-95 flex items-center justify-center gap-2">
-        <Plus className="w-6 h-6" /> Start New Workout
+        <Plus size={24} />
+        Start New Workout
       </button>
 
-      <div className="space-y-4">
-        <h2 className="text-sm font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><History className="w-4 h-4" /> History</h2>
+      <div className="mt-8">
+        <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+          <History size={20} />
+          History
+        </h2>
+
         {history.length === 0 ? (
-            <p className="text-slate-600 text-center py-4">No workout history.</p>
+          <div className="text-center text-slate-500 py-12">No workout history.</div>
         ) : (
-            history.map(session => (
-                <div key={session.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4 hover:border-slate-700 transition-colors">
-                    <div className="flex justify-between items-start mb-3">
-                        <div>
-                            <h3 className="font-bold text-white text-lg">{session.name || 'Workout'}</h3>
-                            <p className="text-xs text-slate-500">{new Date(session.created_at).toLocaleDateString()}</p>
-                        </div>
-                        <button 
-                          onClick={() => handleDelete(session.id)} 
-                          className="text-slate-600 hover:text-red-500 p-1"
-                          disabled={deletingId === session.id}
-                        >
-                          {deletingId === session.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                        </button>
-                    </div>
-                    <div className="space-y-1 mb-4">
-                        {session.exercises.slice(0, 5).map(ex => (
-                            <div key={ex.id} className="text-sm text-slate-400 flex justify-between">
-                                <span>{ex.sets.length} x {ex.name}</span>
-                                <span className="text-slate-600">{Math.max(...ex.sets.map(s => Number(s.weight)))}kg</span>
-                            </div>
-                        ))}
-                        {session.exercises.length > 3 && <p className="text-xs text-slate-600">+{session.exercises.length - 3} more...</p>}
-                    </div>
-                    <button onClick={() => onStartSession(session)} className="w-full py-2 bg-slate-800 rounded-lg text-blue-400 text-sm font-medium hover:bg-slate-700 flex items-center justify-center gap-2">
-                        <RotateCcw className="w-3 h-3" /> Repeat This Workout
-                    </button>
+          <div className="space-y-3">
+            {history.map(session => (
+              <div key={session.id} className="bg-slate-900 rounded-xl p-4 border border-slate-800">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <h3 className="font-bold text-white">{session.name || 'Workout'}</h3>
+                    <p className="text-sm text-slate-500">{new Date(session.created_at).toLocaleDateString()}</p>
+                  </div>
+                  <button
+                    onClick={() => handleDelete(session.id)}
+                    className="text-slate-600 hover:text-red-500 p-1"
+                    disabled={deletingId === session.id}
+                  >
+                    {deletingId === session.id ? <Loader2 size={18} className="animate-spin" /> : <Trash2 size={18} />}
+                  </button>
                 </div>
-            ))
+
+                <div className="space-y-2 mb-3">
+                  {session.exercises.map(ex => {
+                    const completedSets = ex.sets.filter(s => s.completed);
+                    const maxWeight = Math.max(...ex.sets.map(s => Number(s.weight) || 0));
+                    const totalReps = completedSets.reduce((sum, s) => sum + (Number(s.reps) || 0), 0);
+                    
+                    return (
+                      <div key={ex.id} className="flex items-center justify-between text-sm bg-slate-800/50 rounded-lg p-2">
+                        <span className="text-slate-300">{ex.name}</span>
+                        <div className="flex items-center gap-3 text-slate-400">
+                          <span>{completedSets.length} sets</span>
+                          {maxWeight > 0 && <span className="text-emerald-400 font-medium">{maxWeight}kg</span>}
+                          <span>{totalReps} reps</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <button onClick={() => onStartSession(session)} className="w-full py-2 bg-slate-800 rounded-lg text-blue-400 text-sm font-medium hover:bg-slate-700 flex items-center justify-center gap-2">
+                  <RotateCcw size={16} />
+                  Repeat This Workout
+                </button>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>
@@ -411,10 +470,9 @@ const HistoryView = ({ history, onStartSession, onDeleteSession, onOpenSettings,
 };
 
 // --- Main Component ---
-
 export default function GymTracker({ initialHistory, householdSettings, userId }: { initialHistory: GymSession[], householdSettings: HouseholdSettings, userId: string }) {
   const router = useRouter();
-  
+
   // --- Global State ---
   const [view, setView] = useState<'history' | 'active'>('history');
   const [restTimeSetting, setRestTimeSetting] = useState(householdSettings.default_rest_timer || 90);
@@ -474,24 +532,21 @@ export default function GymTracker({ initialHistory, householdSettings, userId }
 
   // Sync Timer with Server State (Robust Timer Logic)
   useEffect(() => {
-    // 1. If server has a future expiry time, sync our local timer to it
     if (householdSettings.timer_expires_at) {
       const expires = new Date(householdSettings.timer_expires_at).getTime();
       const now = Date.now();
       const diff = Math.ceil((expires - now) / 1000);
-
       if (diff > 0) {
         setTimeout(() => {
           setTimer(prev => ({
             ...prev,
             active: true,
             timeLeft: diff,
-            duration: restTimeSetting, // Assume duration is restTime setting
-            isOpen: true // Re-open if it was running
+            duration: restTimeSetting,
+            isOpen: true
           }));
-        }, 0); //
+        }, 0);
       } else {
-        // Timer expired while away
         setTimeout(() => {
           setTimer(prev => ({ ...prev, active: false, timeLeft: 0 }));
         }, 0);
@@ -507,12 +562,10 @@ export default function GymTracker({ initialHistory, householdSettings, userId }
         setTimer(p => {
           const newTime = p.timeLeft - 1;
           if (newTime <= 0) {
-             // Timer Finished
-             playBeep();
-             sendNotification("Rest Complete!");
-             // Clear server timer
-             setServerTimer(userId, null); 
-             return { ...p, timeLeft: 0, active: false };
+            playBeep();
+            sendNotification("Rest Complete!");
+            setServerTimer(userId, null);
+            return { ...p, timeLeft: 0, active: false };
           }
           return { ...p, timeLeft: newTime };
         });
@@ -522,7 +575,6 @@ export default function GymTracker({ initialHistory, householdSettings, userId }
   }, [timer.active]);
 
   // --- Handlers ---
-
   const startNewSession = (template?: GymSession) => {
     if (template) {
       setSessionName(template.name || 'Workout');
@@ -542,10 +594,10 @@ export default function GymTracker({ initialHistory, householdSettings, userId }
     const duration = restTimeSetting;
     const expiresAt = new Date(Date.now() + duration * 1000).toISOString();
     
-    // 1. Optimistic UI update
+    // Restart logic: reset timer to full duration and restart
     setTimer({ active: true, timeLeft: duration, duration: duration, isOpen: true });
     
-    // 2. Sync with Server (Database)
+    // Sync with Server
     await setServerTimer(userId, expiresAt);
 
     // 3. Sync with Service Worker (Background Notification)
@@ -585,17 +637,17 @@ export default function GymTracker({ initialHistory, householdSettings, userId }
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans">
+    <div className="min-h-screen bg-slate-950 text-white">
       {view === 'history' ? (
-        <HistoryView 
-          history={initialHistory} 
-          onStartSession={startNewSession} 
+        <HistoryView
+          history={initialHistory}
+          onStartSession={startNewSession}
           onDeleteSession={handleDeleteSession}
           onOpenSettings={() => setShowSettings(true)}
           onExit={() => router.push('/')}
         />
       ) : (
-        <ActiveSessionView 
+        <ActiveSessionView
           sessionName={sessionName}
           setSessionName={setSessionName}
           exercises={exercises}
@@ -612,18 +664,18 @@ export default function GymTracker({ initialHistory, householdSettings, userId }
       )}
 
       {showSettings && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-            <div className="bg-slate-900 p-6 rounded-2xl w-full max-w-xs border border-slate-700">
-                <h3 className="text-lg font-bold mb-4 text-white">Settings</h3>
-                <div className="mb-6">
-                    <label className="block text-sm text-slate-400 mb-2">Default Rest Time (Seconds)</label>
-                    <input type="number" value={restTimeSetting} onChange={(e) => setRestTimeSetting(Number(e.target.value))} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white" />
-                </div>
-                <div className="flex gap-2">
-                    <button onClick={() => setShowSettings(false)} className="flex-1 py-3 bg-slate-800 rounded-lg text-white">Cancel</button>
-                    <button onClick={handleUpdateRestTime} className="flex-1 py-3 bg-blue-600 rounded-lg text-white">Save</button>
-                </div>
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-end justify-center p-4">
+          <div className="bg-slate-900 rounded-t-3xl w-full max-w-md p-6">
+            <h3 className="text-lg font-bold mb-4 text-white">Settings</h3>
+            <label className="block mb-4">
+              <span className="text-sm text-slate-400 mb-2 block">Default Rest Time (Seconds)</span>
+              <input type="number" value={restTimeSetting} onChange={(e) => setRestTimeSetting(Number(e.target.value))} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white" />
+            </label>
+            <div className="flex gap-3">
+              <button onClick={() => setShowSettings(false)} className="flex-1 py-3 bg-slate-800 rounded-lg text-white">Cancel</button>
+              <button onClick={handleUpdateRestTime} className="flex-1 py-3 bg-blue-600 rounded-lg text-white">Save</button>
             </div>
+          </div>
         </div>
       )}
     </div>
