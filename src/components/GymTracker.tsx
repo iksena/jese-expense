@@ -108,7 +108,7 @@ const ActiveSessionView = ({
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [newExerciseName, setNewExerciseName] = useState('');
   const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const [editingExerciseId, setEditingExerciseId] = useState<string | null>(null);
+  const [editingExerciseId, setEditingExerciseId] = useState<string | undefined | null>(null);
 
   const calculateProgress = () => {
     if (timer.duration === 0) return 0;
