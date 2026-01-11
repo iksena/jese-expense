@@ -7,7 +7,7 @@ import { User } from '@supabase/supabase-js';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AlertTriangle, Calendar, ChevronLeft, ChevronRight, CreditCard, Dumbbell, Edit2, Filter, Loader2, LogOut, Plus, RefreshCw, Settings, Trash2, TrendingUp, Users, Wallet, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState, useTransition } from 'react';
 
 // --- Helper Functions ---
 const formatCurrency = (amount: number, currency: Currency): string => {
@@ -416,6 +416,7 @@ export default function ExpenseDashboard({
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [baseCurrency, setBaseCurrency] = useState<Currency>('IDR');
   const [exchangeRate, setExchangeRate] = useState<number | null>(null);
+  const [isPending, startTransition] = useTransition();
 
   // Fetch Exchange Rate (AUD base, get IDR rate)
   useEffect(() => {
@@ -565,14 +566,29 @@ export default function ExpenseDashboard({
     setSelectedMonth(date.toISOString().slice(0, 7));
   };
 
+  const handleNavigateToGym = () => {
+    startTransition(() => {
+      router.push('/gym');
+    });
+  };
+
   return (
     <div className="min-h-screen bg-linear-to-br from-purple-50 to-blue-50">
       <header className="bg-white shadow-sm sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8 flex justify-between items-center">
           <div className="flex items-center gap-3"><Wallet className="text-purple-600" /><h1 className="text-xl font-bold">Expense Tracker</h1></div>
           <div className="flex gap-2">
-            <button onClick={() => router.push('/gym')} className="p-2 text-gray-600 hover:text-purple-600 rounded-lg hover:bg-purple-50 transition-colors" title="Gym Tracker">
-              <Dumbbell className="w-5 h-5" />
+            <button 
+              onClick={handleNavigateToGym}
+              disabled={isPending}
+              className="p-2 text-gray-600 hover:text-purple-600 rounded-lg hover:bg-purple-50 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed" 
+              title="Gym Tracker"
+            >
+              {isPending ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <Dumbbell className="w-5 h-5" />
+              )}
             </button>
             <button onClick={() => setShowSettings(true)} className="p-2 text-gray-600 hover:text-purple-600 rounded-lg hover:bg-purple-50 transition-colors"><Settings /></button>
             <button onClick={handleLogout} className="p-2 text-gray-600 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors">{isLoggingOut ? <Loader2 className="animate-spin"/> : <LogOut />}</button>
