@@ -489,21 +489,43 @@ export default function GymTracker({ initialHistory, householdSettings, userId }
   // 1. Service Worker Registration
   useEffect(() => {
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js')
-        .then(reg => console.log('Service Worker Registered'))
+      // Request notification permission first (required for iOS)
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().then(permission => {
+          console.log('Notification permission:', permission);
+        });
+      }
+
+      navigator.serviceWorker.register('/sw.js', { scope: '/' })
+        .then(reg => {
+          console.log('Service Worker Registered', reg);
+          
+          // For iOS: Ensure service worker is active before using
+          if (reg.active) {
+            console.log('SW is active');
+          } else if (reg.installing) {
+            reg.installing.addEventListener('statechange', (e) => {
+              if ((e.target as ServiceWorker).state === 'activated') {
+                console.log('SW activated');
+              }
+            });
+          }
+        })
         .catch(err => console.error('Service Worker Failed', err));
-      
+
       // Listen for messages FROM the Service Worker
       navigator.serviceWorker.addEventListener('message', (event) => {
         if (event.data && event.data.type === 'TIMER_DONE') {
           // Sync local state when SW says timer is done
           setTimer(prev => ({ ...prev, active: false, timeLeft: 0 }));
-          // Optional: Play beep here as backup if foreground
-          playBeep(); 
+          // Play beep as backup if foreground
+          playBeep();
+          // Clear server timer
+          setServerTimer(userId, null);
         }
       });
     }
-  }, []);
+  }, [userId]);
 
   // Load active session from local storage on mount
   useEffect(() => {
@@ -564,7 +586,9 @@ export default function GymTracker({ initialHistory, householdSettings, userId }
           if (newTime <= 0) {
             playBeep();
             sendNotification("Rest Complete!");
-            setServerTimer(userId, null);
+            setTimeout(() => {
+              setServerTimer(userId, null);
+            }, 0);
             return { ...p, timeLeft: 0, active: false };
           }
           return { ...p, timeLeft: newTime };
@@ -599,15 +623,25 @@ export default function GymTracker({ initialHistory, householdSettings, userId }
     
     // Sync with Server
     await setServerTimer(userId, expiresAt);
-
-    // 3. Sync with Service Worker (Background Notification)
-    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-      navigator.serviceWorker.controller.postMessage({
-        type: 'START_TIMER',
-        delay: duration * 1000 // Convert seconds to ms
+    
+    // Sync with Service Worker (Background Notification)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then(registration => {
+        // Check if service worker controller exists (iOS can be finicky)
+        if (navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({
+            type: 'START_TIMER',
+            delay: duration * 1000 // Convert seconds to ms
+          });
+        } else {
+          console.warn('No SW controller available - timer will work in foreground only');
+        }
+      }).catch(err => {
+        console.error('SW not ready:', err);
       });
     }
   };
+
 
   const handleSaveSession = async () => {
     if (exercises.length === 0) return;
