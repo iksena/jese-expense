@@ -525,6 +525,20 @@ export default function ExpenseDashboard({
       });
   }, [filteredExpenses]);
 
+  const monthlyTotals = useMemo(() => ({
+    IDR: filteredExpenses.filter(e => e.currency === 'IDR').reduce((s, e) => s + e.amount, 0)
+   + filteredExpenses.filter(e => e.currency === 'AUD').reduce((s, e) => s + e.amount, 0) * (exchangeRate || 0),
+   AUD: filteredExpenses.filter(e => e.currency === 'AUD').reduce((s, e) => s + e.amount, 0)
+   + filteredExpenses.filter(e => e.currency === 'IDR').reduce((s, e) => s + e.amount, 0) / (exchangeRate || 1),
+  }), [filteredExpenses, exchangeRate]);
+
+  const totalBills = useMemo(() => ({
+    IDR: filteredBills.filter(b => b.currency === 'IDR').reduce((s, b) => s + b.amount, 0)
+   + filteredBills.filter(b => b.currency === 'AUD').reduce((s, b) => s + b.amount, 0) * (exchangeRate || 0),
+   AUD: filteredBills.filter(b => b.currency === 'AUD').reduce((s, b) => s + b.amount, 0)
+   + filteredBills.filter(b => b.currency === 'IDR').reduce((s, b) => s + b.amount, 0) / (exchangeRate || 1),
+  }), [filteredBills, exchangeRate]);
+
   const rawTotals = useMemo(() => ({
     IDR: filteredExpenses.filter(e => e.currency === 'IDR').reduce((s, e) => s + e.amount, 0) 
       + filteredBills.filter(b => b.currency === 'IDR').reduce((s, b) => s + b.amount, 0),
@@ -663,6 +677,8 @@ export default function ExpenseDashboard({
                     <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
                       <RefreshCw className="w-3 h-3" /> 1 AUD ≈ {formatCurrency(exchangeRate, 'IDR')}
                     </p>
+                    <p className="text-xs text-gray-800 mt-1 flex items-center gap-1">Monthly Expense: {formatCurrency(monthlyTotals[baseCurrency], baseCurrency)}</p>
+                    <p className="text-xs text-gray-800 mt-1 flex items-center gap-1">Total Bills: {formatCurrency(totalBills[baseCurrency], baseCurrency)}</p>
                    </>
                  ) : (
                    <div className="animate-pulse h-10 bg-gray-200 rounded w-2/3"></div>
@@ -868,8 +884,7 @@ export default function ExpenseDashboard({
                         <div className="flex justify-between items-center bg-gray-100 px-4 py-2 rounded-lg mb-2 text-sm font-semibold text-gray-600">
                           <span suppressHydrationWarning>{formatDateFriendly(group.date)}</span>
                           <span className="flex gap-2">
-                             {group.totalIDR > 0 && <span>{formatCurrency(group.totalIDR, 'IDR')}</span>}
-                             {group.totalAUD > 0 && <span>{formatCurrency(group.totalAUD, 'AUD')}</span>}
+                             <span className="text-gray-600">Total: {formatCurrency(group.totalIDR + group.totalAUD * (exchangeRate || 0), 'IDR')} ({formatCurrency(group.totalAUD + group.totalIDR / (exchangeRate || 1), 'AUD')})</span>
                           </span>
                         </div>
                         {group.items.map((expense) => (
@@ -926,8 +941,8 @@ export default function ExpenseDashboard({
                       <div className="flex justify-between items-center bg-purple-50 px-4 py-2 rounded-lg mb-2 text-sm font-bold text-purple-800 mt-6">
                         <span>Recurring Bills</span>
                         <span className="flex gap-2">
-                           {filteredBills.some(b => b.currency === 'IDR') && <span>Total: {formatCurrency(filteredBills.filter(b => b.currency === 'IDR').reduce((a, b) => a + b.amount, 0), 'IDR')}</span>}
-                           {filteredBills.some(b => b.currency === 'AUD') && <span>Total: {formatCurrency(filteredBills.filter(b => b.currency === 'AUD').reduce((a, b) => a + b.amount, 0), 'AUD')}</span>}
+                            <span>Total: {formatCurrency(filteredBills.filter(b => b.currency === 'IDR').reduce((a, b) => a + b.amount, 0) + filteredBills.filter(b => b.currency === 'AUD').reduce((a, b) => a + b.amount, 0) * (exchangeRate || 0), 'IDR')}</span>
+                            <span>= {formatCurrency(filteredBills.filter(b => b.currency === 'AUD').reduce((a, b) => a + b.amount, 0) + filteredBills.filter(b => b.currency === 'IDR').reduce((a, b) => a + b.amount, 0) / (exchangeRate || 1), 'AUD')}</span>
                         </span>
                       </div>
                       {filteredBills.map(bill => (
@@ -986,8 +1001,7 @@ export default function ExpenseDashboard({
                                <div className="flex justify-between">
                                   <span suppressHydrationWarning>{formatDateFriendly(group.date)}</span>
                                   <div className="flex gap-4">
-                                     {group.totalIDR > 0 && <span className="text-gray-600">Total: {formatCurrency(group.totalIDR, 'IDR')}</span>}
-                                     {group.totalAUD > 0 && <span className="text-gray-600">Total: {formatCurrency(group.totalAUD, 'AUD')}</span>}
+                                     <span className="text-gray-600">Total: {formatCurrency(group.totalIDR + group.totalAUD * (exchangeRate || 0), 'IDR')} ({formatCurrency(group.totalAUD + group.totalIDR / (exchangeRate || 1), 'AUD')})</span>
                                   </div>
                                </div>
                              </td>
@@ -1053,8 +1067,8 @@ export default function ExpenseDashboard({
                             <div className="flex justify-between">
                               <span>Recurring Bills</span>
                               <div className="flex gap-4">
-                                 {filteredBills.some(b => b.currency === 'IDR') && <span>Total: {formatCurrency(filteredBills.filter(b => b.currency === 'IDR').reduce((a, b) => a + b.amount, 0), 'IDR')}</span>}
-                                 {filteredBills.some(b => b.currency === 'AUD') && <span>Total: {formatCurrency(filteredBills.filter(b => b.currency === 'AUD').reduce((a, b) => a + b.amount, 0), 'AUD')}</span>}
+                                 <span>Total: {formatCurrency(filteredBills.filter(b => b.currency === 'IDR').reduce((a, b) => a + b.amount, 0) + filteredBills.filter(b => b.currency === 'AUD').reduce((a, b) => a + b.amount, 0) * (exchangeRate || 0), 'IDR')}</span>
+                                 <span>= {formatCurrency(filteredBills.filter(b => b.currency === 'AUD').reduce((a, b) => a + b.amount, 0) + filteredBills.filter(b => b.currency === 'IDR').reduce((a, b) => a + b.amount, 0) / (exchangeRate || 1), 'AUD')}</span>
                               </div>
                             </div>
                           </td>
